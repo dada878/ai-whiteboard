@@ -1,36 +1,129 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🧠 AI Whiteboard - 智能白板工具
 
-## Getting Started
+一個支援 AI 輔助的互動式白板應用程式，讓你可以自由創建便利貼、建立連線，並透過 AI 功能進行思維發散、結構分析和內容摘要。
 
-First, run the development server:
+## ✨ 功能特色
 
+### 📝 便利貼系統
+- 滑鼠右鍵點擊畫布新增便利貼
+- 拖拽移動便利貼位置
+- 雙擊編輯便利貼內容
+- 更換便利貼顏色
+- 刪除不需要的便利貼
+
+### 🔗 連線系統
+- 便利貼間建立箭頭連線
+- 拖動便利貼時自動更新連線位置
+- 視覺化顯示概念間的關係
+
+### 🤖 AI 智能功能
+
+#### 💡 AI 發散（針對單一便利貼）
+- 右鍵點擊便利貼選擇「AI 發想」
+- AI 會根據便利貼內容生成 3-5 個相關想法
+- 自動創建新便利貼並建立連線
+
+#### 📊 AI 結構分析（針對整張白板）
+- 點擊左側工具欄的「📊」按鈕
+- 分析整體邏輯結構
+- 識別遺漏主題和優化建議
+
+#### 📝 AI 總結（針對整張白板）
+- 點擊左側工具欄的「📝」按鈕
+- 生成白板內容的核心摘要
+- 提取關鍵要點和邏輯關係
+
+## 🚀 快速開始
+
+### 安裝依賴
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 啟動開發服務器
+```bash
+npm run dev
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+開啟瀏覽器訪問 [http://localhost:3000](http://localhost:3000)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🎯 使用方法
 
-## Learn More
+### 基本操作
+1. **新增便利貼**：在畫布空白處右鍵點擊
+2. **編輯內容**：雙擊便利貼開始編輯
+3. **移動便利貼**：拖拽便利貼的標題欄
+4. **更換顏色**：右鍵便利貼 → 選擇「🎨 更換顏色」
+5. **刪除便利貼**：右鍵便利貼 → 選擇「🗑️ 刪除」
 
-To learn more about Next.js, take a look at the following resources:
+### AI 功能使用
+1. **AI 發散**：右鍵單一便利貼 → 「🧠 AI 發想」
+2. **AI 分析**：左側工具欄點擊「📊」按鈕
+3. **AI 摘要**：左側工具欄點擊「📝」按鈕
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 查看結果
+- AI 處理結果會顯示在右側面板
+- 可以複製結果文字
+- 點擊面板右上角的「▶」可以收合面板
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🔧 配置 AI 功能
 
-## Deploy on Vercel
+要啟用真正的 AI 功能，請：
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. 取得 OpenAI API 金鑰
+2. 在專案根目錄建立 `.env.local` 文件
+3. 加入以下內容：
+```
+NEXT_PUBLIC_OPENAI_API_KEY=你的API金鑰
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+不設定 API 金鑰時，會使用模擬資料進行測試。
+
+## 📁 專案結構
+
+```
+ai-whiteboard/
+├── app/
+│   ├── components/          # React 元件
+│   │   ├── Whiteboard.tsx  # 主白板元件
+│   │   ├── StickyNote.tsx  # 便利貼元件
+│   │   ├── Edge.tsx        # 連線元件
+│   │   ├── Toolbar.tsx     # 工具欄元件
+│   │   └── SidePanel.tsx   # 右側面板元件
+│   ├── services/           # 服務層
+│   │   └── aiService.ts    # AI 服務
+│   ├── types.ts           # TypeScript 類型定義
+│   └── page.tsx           # 主頁面
+```
+
+## 🛠️ 技術棧
+
+- **前端框架**：Next.js 15 + React 19
+- **樣式**：Tailwind CSS
+- **拖拽功能**：react-draggable
+- **AI 服務**：OpenAI GPT-4
+- **開發語言**：TypeScript
+
+## 🎨 設計理念
+
+這個應用的設計遵循以下原則：
+- **簡潔直觀**：最小化學習成本，直覺化操作
+- **AI 輔助**：AI 作為思考助手，不取代人類思維
+- **視覺化**：透過便利貼和連線呈現思維結構
+- **互動性**：即時回饋，流暢的使用體驗
+
+## 🚧 開發中功能
+
+- 便利貼間的雙向連線
+- 更多 AI 模型選擇（Claude、Gemini 等）
+- 白板內容的匯入/匯出
+- 協作功能（多人同時編輯）
+- 範本系統（預設的思維框架）
+
+## 🤝 貢獻
+
+歡迎提交 Issue 和 Pull Request！
+
+## 📄 授權
+
+MIT License
