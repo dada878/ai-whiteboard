@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Since we're using NextAuth instead of Firebase Auth,
+    // we need to allow read/write access.
+    // In production, you should implement proper security through your API routes.
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

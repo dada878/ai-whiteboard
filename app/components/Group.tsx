@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Group as GroupType } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface GroupComponentProps {
   group: GroupType;
@@ -40,6 +41,7 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
   onDelete,
   onStartDrag
 }) => {
+  const { isDarkMode } = useTheme();
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(group.name);
   const [showContextMenu, setShowContextMenu] = useState(false);
@@ -119,6 +121,7 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
           strokeDasharray={isSelected ? "6,3" : "5,3"}
           rx="8"
           style={{ pointerEvents: 'all', cursor: 'move' }}
+          vectorEffect="non-scaling-stroke"
         />
         
         {/* 群組名稱 */}
@@ -137,11 +140,13 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
               onBlur={handleNameSave}
               onKeyDown={handleNameKeyDown}
               onClick={(e) => e.stopPropagation()}
-              className="px-2 py-0 text-base font-bold bg-white border border-gray-400 rounded"
+              className={`px-2 py-0 text-base font-bold rounded ${
+                isDarkMode 
+                  ? 'bg-dark-bg-secondary border-gray-600 text-dark-text' 
+                  : 'bg-white border-gray-400 text-gray-900'
+              }`}
               style={{
-                fontSize: `${16 / zoomLevel}px`,
-                transform: `scale(${zoomLevel})`,
-                transformOrigin: 'left top'
+                fontSize: '20px'
               }}
             />
           </foreignObject>
@@ -149,7 +154,7 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
           <text
             x={bounds.x + 8}
             y={bounds.y - 8}
-            fontSize="18"
+            fontSize={24}
             fill={isSelected ? "rgb(59, 130, 246)" : "#374151"}
             fillOpacity="1"
             fontWeight="700"
@@ -169,18 +174,30 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
             onClick={() => setShowContextMenu(false)}
           />
           <div
-            className="context-menu fixed z-50 bg-white rounded-xl shadow-2xl border border-gray-200 py-2 min-w-48 backdrop-blur-sm"
+            className={`context-menu fixed z-50 rounded-xl shadow-2xl border py-2 min-w-48 backdrop-blur-sm ${
+              isDarkMode
+                ? 'bg-dark-bg-secondary border-gray-700'
+                : 'bg-white border-gray-200'
+            }`}
             style={{
               left: Math.min(menuPosition.x + 10, window.innerWidth - 200),
               top: Math.min(menuPosition.y + 10, window.innerHeight - 300),
             }}
           >
-            <div className="px-3 py-1 text-xs font-medium text-gray-500 border-b border-gray-100 mb-1">
+            <div className={`px-3 py-1 text-xs font-medium border-b mb-1 ${
+              isDarkMode
+                ? 'text-dark-text-secondary border-gray-700'
+                : 'text-gray-500 border-gray-100'
+            }`}>
               群組操作
             </div>
             
             <button
-              className="w-full px-4 py-2.5 text-left hover:bg-blue-50 text-sm flex items-center gap-2 text-gray-700 hover:text-blue-600 transition-colors"
+              className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
+                isDarkMode
+                  ? 'text-dark-text hover:bg-blue-900/30 hover:text-blue-400'
+                  : 'text-gray-700 hover:bg-blue-50 hover:text-blue-600'
+              }`}
               onClick={() => {
                 setIsEditingName(true);
                 setShowContextMenu(false);
@@ -201,7 +218,9 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
                       className="w-8 h-8 rounded border-2 hover:scale-110 transition-all shadow-sm hover:shadow-md"
                       style={{ 
                         backgroundColor: colorObj.color,
-                        borderColor: group.color === colorObj.color ? 'rgb(59, 130, 246)' : '#D1D5DB'
+                        borderColor: group.color === colorObj.color 
+                          ? 'rgb(59, 130, 246)' 
+                          : isDarkMode ? '#4B5563' : '#D1D5DB'
                       }}
                       onClick={() => {
                         onUpdateColor(colorObj.color);
@@ -220,10 +239,16 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
               </div>
             </div>
 
-            <hr className="my-1 border-gray-100" />
+            <hr className={`my-1 ${
+              isDarkMode ? 'border-gray-700' : 'border-gray-100'
+            }`} />
             
             <button
-              className="w-full px-4 py-2.5 text-left hover:bg-indigo-50 text-sm flex items-center gap-2 text-gray-700 hover:text-indigo-600 transition-colors"
+              className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
+                isDarkMode
+                  ? 'text-dark-text hover:bg-indigo-900/30 hover:text-indigo-400'
+                  : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
+              }`}
               onClick={() => {
                 onUngroup();
                 setShowContextMenu(false);
@@ -234,7 +259,11 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
             </button>
             
             <button
-              className="w-full px-4 py-2.5 text-left hover:bg-red-50 text-red-600 text-sm flex items-center gap-2 transition-colors"
+              className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
+                isDarkMode
+                  ? 'text-red-400 hover:bg-red-900/30'
+                  : 'text-red-600 hover:bg-red-50'
+              }`}
               onClick={() => {
                 onDelete();
                 setShowContextMenu(false);

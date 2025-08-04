@@ -2,15 +2,27 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { StickyNote, Edge, Group, WhiteboardData, NetworkAnalysis, NetworkConnection } from '../types';
+import { StickyNote, Edge, Group, WhiteboardData, NetworkAnalysis, NetworkConnection, Project } from '../types';
 import StickyNoteComponent from './StickyNote';
 import EdgeComponent from './Edge';
 import GroupComponent from './Group';
 import FloatingToolbar from './FloatingToolbar';
 import SidePanel from './SidePanel';
+import Notes from './Notes';
+import Templates from './Templates';
+import ProjectDialog from './ProjectDialog';
+import AIPreviewDialog from './AIPreviewDialog';
 import { StorageService } from '../services/storageService';
+import { AlignmentService } from '../services/alignmentService';
+import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { ProjectService } from '../services/projectService';
+import { SyncService, SyncStatus } from '../services/syncService';
 
 const Whiteboard: React.FC = () => {
+  const { isDarkMode } = useTheme();
+  const { user } = useAuth();
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [whiteboardData, setWhiteboardData] = useState<WhiteboardData>({
     notes: [],
     edges: [],
@@ -41,12 +53,62 @@ const Whiteboard: React.FC = () => {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [zoomCenter, setZoomCenter] = useState({ x: 0, y: 0 });
+  const [showNotes, setShowNotes] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showAIMenu, setShowAIMenu] = useState(false);
+  const [aiMenuPosition, setAIMenuPosition] = useState({ x: 0, y: 0 });
+  const [showAskAIDialog, setShowAskAIDialog] = useState(false);
+  const [askAINoteId, setAskAINoteId] = useState<string | null>(null);
+  const [customPrompt, setCustomPrompt] = useState('');
+  // 對齊輔助線相關狀態
+  const [alignmentGuides, setAlignmentGuides] = useState<Array<{
+    type: 'horizontal' | 'vertical';
+    position: number;
+    start: number;
+    end: number;
+  }>>([]);
+  const [isDraggingNote, setIsDraggingNote] = useState(false);
+  const [isHoldingCmd, setIsHoldingCmd] = useState(false);
+  const [showProjectDialog, setShowProjectDialog] = useState(false);
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [cloudSyncEnabled, setCloudSyncEnabled] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncService.getSyncStatus());
+  const [showAIPreview, setShowAIPreview] = useState(false);
+  const [aiPreviewData, setAIPreviewData] = useState<any>(null);
+  const [pendingAIResult, setPendingAIResult] = useState<any>(null);
+  
+  // AI loading 狀態管理
+  const [aiLoadingStates, setAiLoadingStates] = useState<{
+    brainstorm: boolean;
+    analyze: boolean;
+    summarize: boolean;
+    askAI: boolean;
+    targetNoteId?: string; // 當前正在處理 AI 的便利貼 ID
+    // Chain of thought 思考步驟
+    thinkingSteps?: string[];
+    currentStep?: number;
+    // 每個步驟的詳細結果
+    stepResults?: { [stepIndex: number]: string };
+  }>({
+    brainstorm: false,
+    analyze: false,
+    summarize: false,
+    askAI: false
+  });
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
   const MIN_ZOOM = 0.25;
   const MAX_ZOOM = 3;
+
+  // 包裝的 setWhiteboardData 函數，會同時標記本地變更時間
+  const updateWhiteboardData = useCallback((
+    updater: WhiteboardData | ((prev: WhiteboardData) => WhiteboardData)
+  ) => {
+    setWhiteboardData(updater);
+    SyncService.markLocalChange();
+  }, []);
 
   // 歷史記錄相關函數
   const saveToHistory = useCallback((data: WhiteboardData) => {
@@ -98,7 +160,7 @@ const Whiteboard: React.FC = () => {
         y: note.y + 20
       }));
       
-      setWhiteboardData(prev => ({
+      updateWhiteboardData(prev => ({
         ...prev,
         notes: [...prev.notes, ...newNotes]
       }));
@@ -122,7 +184,7 @@ const Whiteboard: React.FC = () => {
         y: note.y + 20
       }));
       
-      setWhiteboardData(prev => ({
+      updateWhiteboardData(prev => ({
         ...prev,
         notes: [...prev.notes, ...newNotes]
       }));
@@ -144,7 +206,7 @@ const Whiteboard: React.FC = () => {
       saveToHistory(whiteboardData);
       const notesToDelete = selectedNote ? [selectedNote] : selectedNotes;
       
-      setWhiteboardData(prev => ({
+      updateWhiteboardData(prev => ({
         notes: prev.notes.filter(note => !notesToDelete.includes(note.id)),
         edges: prev.edges.filter(edge => 
           !notesToDelete.includes(edge.from) && !notesToDelete.includes(edge.to)
@@ -155,7 +217,7 @@ const Whiteboard: React.FC = () => {
       setSelectedNote(null);
     } else if (selectedEdge) {
       saveToHistory(whiteboardData);
-      setWhiteboardData(prev => ({
+      updateWhiteboardData(prev => ({
         ...prev,
         edges: prev.edges.filter(edge => edge.id !== selectedEdge)
       }));
@@ -166,7 +228,7 @@ const Whiteboard: React.FC = () => {
   const moveSelectedNotes = useCallback((deltaX: number, deltaY: number) => {
     const notesToMove = selectedNote ? [selectedNote] : selectedNotes;
     if (notesToMove.length > 0) {
-      setWhiteboardData(prev => ({
+      updateWhiteboardData(prev => ({
         ...prev,
         notes: prev.notes.map(note => 
           notesToMove.includes(note.id)
@@ -181,7 +243,7 @@ const Whiteboard: React.FC = () => {
   const handleBatchColorChange = useCallback((color: string) => {
     if (selectedNotes.length > 0) {
       saveToHistory(whiteboardData);
-      setWhiteboardData(prev => ({
+      updateWhiteboardData(prev => ({
         ...prev,
         notes: prev.notes.map(note => 
           selectedNotes.includes(note.id)
@@ -216,7 +278,7 @@ const Whiteboard: React.FC = () => {
       noteIds: noteIds
     };
 
-    setWhiteboardData(prev => ({
+    updateWhiteboardData(prev => ({
       ...prev,
       groups: [...(prev.groups || []), newGroup],
       notes: prev.notes.map(note => 
@@ -238,7 +300,7 @@ const Whiteboard: React.FC = () => {
     const group = (whiteboardData.groups || []).find(g => g.id === groupId);
     if (!group) return;
 
-    setWhiteboardData(prev => ({
+    updateWhiteboardData(prev => ({
       ...prev,
       groups: (prev.groups || []).filter(g => g.id !== groupId),
       notes: prev.notes.map(note => 
@@ -276,7 +338,7 @@ const Whiteboard: React.FC = () => {
 
   const updateGroupName = useCallback((groupId: string, newName: string) => {
     saveToHistory(whiteboardData);
-    setWhiteboardData(prev => ({
+    updateWhiteboardData(prev => ({
       ...prev,
       groups: (prev.groups || []).map(group => 
         group.id === groupId 
@@ -288,7 +350,7 @@ const Whiteboard: React.FC = () => {
 
   const updateGroupColor = useCallback((groupId: string, newColor: string) => {
     saveToHistory(whiteboardData);
-    setWhiteboardData(prev => ({
+    updateWhiteboardData(prev => ({
       ...prev,
       groups: (prev.groups || []).map(group => 
         group.id === groupId 
@@ -309,7 +371,7 @@ const Whiteboard: React.FC = () => {
       noteIdsToDelete.includes(edge.from) || noteIdsToDelete.includes(edge.to)
     );
 
-    setWhiteboardData(prev => ({
+    updateWhiteboardData(prev => ({
       ...prev,
       notes: prev.notes.filter(note => !noteIdsToDelete.includes(note.id)),
       edges: prev.edges.filter(edge => !edgesToDelete.includes(edge)),
@@ -346,6 +408,33 @@ const Whiteboard: React.FC = () => {
   // 批量移動
   const handleBatchMove = useCallback((deltaX: number, deltaY: number) => {
     if (selectedNotes.length > 0) {
+      // 獲取正在移動的便利貼
+      const movingNotes = whiteboardData.notes.filter(note => selectedNotes.includes(note.id));
+      
+      let snappedDeltaX = deltaX;
+      let snappedDeltaY = deltaY;
+      
+      // 只在按住 Cmd 時計算對齊
+      if (isHoldingCmd) {
+        // 計算對齊
+        const alignmentResult = AlignmentService.calculateMultipleAlignment(
+          movingNotes,
+          deltaX,
+          deltaY,
+          whiteboardData.notes
+        );
+        
+        // 設置輔助線
+        setAlignmentGuides(alignmentResult.guides);
+        
+        // 使用吸附後的位移
+        snappedDeltaX = alignmentResult.snappedPosition.x;
+        snappedDeltaY = alignmentResult.snappedPosition.y;
+      } else {
+        // 清除輔助線
+        setAlignmentGuides([]);
+      }
+      
       setWhiteboardData(prev => ({
         ...prev,
         notes: prev.notes.map(note => {
@@ -354,8 +443,8 @@ const Whiteboard: React.FC = () => {
             if (initialPos) {
               return {
                 ...note,
-                x: initialPos.x + deltaX,
-                y: initialPos.y + deltaY
+                x: initialPos.x + snappedDeltaX,
+                y: initialPos.y + snappedDeltaY
               };
             }
           }
@@ -363,7 +452,7 @@ const Whiteboard: React.FC = () => {
         })
       }));
     }
-  }, [selectedNotes, batchDragInitialPositions]);
+  }, [selectedNotes, batchDragInitialPositions, whiteboardData.notes, isHoldingCmd]);
 
   // 處理群組拖曳
   const handleGroupDrag = useCallback((groupId: string, deltaX: number, deltaY: number) => {
@@ -387,48 +476,124 @@ const Whiteboard: React.FC = () => {
     }));
   }, [groupDragState]);
 
-  // 載入儲存的資料
+
+  // 載入專案資料
   useEffect(() => {
-    const savedData = StorageService.loadWhiteboardData();
-    if (savedData && (savedData.notes.length > 0 || savedData.edges.length > 0)) {
-      // 確保 groups 陣列存在
-      const dataWithGroups = {
-        ...savedData,
-        groups: savedData.groups || []
-      };
-      setWhiteboardData(dataWithGroups);
-      setLastSaveTime(StorageService.getLastSaveTime());
+    const loadProjectData = async () => {
+      // 初始化預設專案
+      ProjectService.initializeDefaultProject();
       
-      // 恢復視窗狀態
-      if (savedData.viewport) {
-        setZoomLevel(savedData.viewport.zoomLevel);
-        setPanOffset(savedData.viewport.panOffset);
+      // 獲取當前專案 ID
+      let projectId = ProjectService.getCurrentProjectId();
+      
+      // 如果沒有當前專案，選擇第一個專案
+      if (!projectId) {
+        const projects = ProjectService.getAllProjects();
+        if (projects.length > 0) {
+          projectId = projects[0].id;
+          ProjectService.setCurrentProject(projectId);
+        }
       }
       
-      // 初始化歷史記錄
-      setHistory([dataWithGroups]);
-      setHistoryIndex(0);
-    } else {
-      // 沒有儲存資料時，初始化空的歷史記錄
-      const initialData = { notes: [], edges: [], groups: [] };
-      setHistory([initialData]);
-      setHistoryIndex(0);
-    }
+      if (projectId) {
+        setCurrentProjectId(projectId);
+        
+        // 更新當前專案資訊
+        const projects = ProjectService.getAllProjects();
+        const project = projects.find(p => p.id === projectId);
+        setCurrentProject(project || null);
+        
+        
+        // 從本地載入
+        const localData = ProjectService.loadProjectData(projectId);
+        if (localData) {
+          setWhiteboardData(localData);
+          setLastSaveTime(new Date());
+          
+          // 恢復視窗狀態
+          if (localData.viewport) {
+            setZoomLevel(localData.viewport.zoomLevel);
+            setPanOffset(localData.viewport.panOffset);
+          }
+          
+          // 初始化歷史記錄
+          setHistory([localData]);
+          setHistoryIndex(0);
+        } else {
+          // 沒有資料時，初始化空的歷史記錄
+          const initialData = { notes: [], edges: [], groups: [] };
+          setHistory([initialData]);
+          setHistoryIndex(0);
+        }
+      }
+    };
+    
+    loadProjectData();
   }, []);
+
+  // 處理雲端同步切換
+  const handleToggleCloudSync = useCallback(async (enabled: boolean) => {
+    setCloudSyncEnabled(enabled);
+    
+    if (enabled && user?.id && currentProjectId) {
+      try {
+        // 同步所有專案
+        await SyncService.syncAllProjects(user.id);
+        
+        // 啟用即時同步
+        SyncService.enableRealtimeSync(currentProjectId, user.id, (data) => {
+          // 從雲端接收到更新
+          setWhiteboardData(data);
+        });
+        
+        // 更新同步狀態
+        setSyncStatus(SyncService.getSyncStatus());
+      } catch (error) {
+        console.error('Failed to enable cloud sync:', error);
+        setCloudSyncEnabled(false);
+      }
+    } else if (!enabled) {
+      // 停用即時同步
+      SyncService.disableAllRealtimeSync();
+    }
+  }, [user, currentProjectId]);
+
+  // 當使用者登入時自動啟用雲端同步
+  useEffect(() => {
+    if (user?.id) {
+      // 用戶登入時自動啟用雲端同步
+      setCloudSyncEnabled(true);
+      
+      // 同步所有專案
+      SyncService.syncAllProjects(user.id).then(() => {
+        setSyncStatus(SyncService.getSyncStatus());
+      }).catch(error => {
+        console.error('Auto sync failed:', error);
+      });
+    }
+  }, [user]);
+
+  // 當使用者登入狀態或專案改變時，重新設置即時同步
+  useEffect(() => {
+    if (user?.id && currentProjectId) {
+      // 啟用即時同步（不再需要檢查 cloudSyncEnabled，因為登入後自動啟用）
+      SyncService.enableRealtimeSync(currentProjectId, user.id, (data) => {
+        setWhiteboardData(data);
+      });
+      
+      return () => {
+        SyncService.disableRealtimeSync(currentProjectId);
+      };
+    }
+  }, [user, currentProjectId]);
 
   // 初始化畫布位置到中央（僅在沒有保存的視窗狀態時）
   useEffect(() => {
-    if (canvasRef.current) {
-      const savedData = StorageService.loadWhiteboardData();
-      // 只有在沒有保存的視窗狀態時才設置預設位置
-      if (!savedData?.viewport) {
-        const canvas = canvasRef.current;
-        // 將畫布定位到一個合理的初始位置
-        // 由於畫布非常大，我們將視窗對準到 (0,0) 附近
-        setPanOffset({ x: 100, y: 100 });
-      }
+    if (canvasRef.current && !whiteboardData.viewport) {
+      // 將畫布定位到一個合理的初始位置
+      setPanOffset({ x: 100, y: 100 });
     }
-  }, []);
+  }, [whiteboardData.viewport]);
 
   // 清理定時器
   useEffect(() => {
@@ -442,19 +607,121 @@ const Whiteboard: React.FC = () => {
   // 自動儲存 - 每當白板資料變更時
   useEffect(() => {
     // 防止初始載入時觸發儲存
-    if (whiteboardData.notes.length === 0 && whiteboardData.edges.length === 0) {
+    if (!currentProjectId || (whiteboardData.notes.length === 0 && whiteboardData.edges.length === 0)) {
       return;
     }
 
     // 使用 debounce 避免頻繁儲存
-    const saveTimer = setTimeout(() => {
+    const saveTimer = setTimeout(async () => {
       const viewport = { zoomLevel, panOffset };
-      StorageService.saveWhiteboardData(whiteboardData, viewport);
+      
+      // 儲存到本地
+      ProjectService.saveProjectData(currentProjectId, whiteboardData, viewport);
+      
+      // 如果啟用雲端同步且使用者已登入，同步到雲端
+      if (cloudSyncEnabled && user?.id) {
+        try {
+          await SyncService.saveProjectData(user.id, currentProjectId, whiteboardData);
+          // 更新同步狀態
+          setSyncStatus(SyncService.getSyncStatus());
+        } catch (error) {
+          console.error('Failed to sync to cloud:', error);
+          setSyncStatus(SyncService.getSyncStatus());
+        }
+      }
+      
       setLastSaveTime(new Date());
     }, 1000); // 1秒後儲存
 
     return () => clearTimeout(saveTimer);
-  }, [whiteboardData, zoomLevel, panOffset]);
+  }, [whiteboardData, zoomLevel, panOffset, currentProjectId, cloudSyncEnabled, user]);
+
+  // 計算所有內容的邊界
+  const calculateContentBounds = useCallback(() => {
+    if (whiteboardData.notes.length === 0) {
+      return null;
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    // 計算所有便利貼的邊界
+    whiteboardData.notes.forEach(note => {
+      minX = Math.min(minX, note.x);
+      minY = Math.min(minY, note.y);
+      maxX = Math.max(maxX, note.x + note.width);
+      maxY = Math.max(maxY, note.y + note.height);
+    });
+
+    // 計算所有群組的邊界
+    whiteboardData.groups?.forEach(group => {
+      minX = Math.min(minX, group.x);
+      minY = Math.min(minY, group.y);
+      maxX = Math.max(maxX, group.x + group.width);
+      maxY = Math.max(maxY, group.y + group.height);
+    });
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      centerX: (minX + maxX) / 2,
+      centerY: (minY + maxY) / 2
+    };
+  }, [whiteboardData.notes, whiteboardData.groups]);
+
+  // 回到內容中心
+  const centerViewOnContent = useCallback(() => {
+    const bounds = calculateContentBounds();
+    if (!bounds || !canvasRef.current) return;
+
+    const canvasRect = canvasRef.current.getBoundingClientRect();
+    const canvasWidth = canvasRect.width;
+    const canvasHeight = canvasRect.height;
+
+    // 計算適合的縮放級別（留一些邊距）
+    const padding = 100;
+    const scaleX = (canvasWidth - padding * 2) / bounds.width;
+    const scaleY = (canvasHeight - padding * 2) / bounds.height;
+    const newZoom = Math.min(Math.max(Math.min(scaleX, scaleY), MIN_ZOOM), MAX_ZOOM);
+
+    // 計算新的平移位置，使內容居中
+    const newPanX = (canvasWidth / 2) - (bounds.centerX * newZoom);
+    const newPanY = (canvasHeight / 2) - (bounds.centerY * newZoom);
+
+    // 平滑過渡動畫
+    const startZoom = zoomLevel;
+    const startPanX = panOffset.x;
+    const startPanY = panOffset.y;
+    const startTime = Date.now();
+    const duration = 500; // 500ms 動畫
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // 使用 easeInOutCubic 緩動函數
+      const easeProgress = progress < 0.5
+        ? 4 * progress * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+      const currentZoom = startZoom + (newZoom - startZoom) * easeProgress;
+      const currentPanX = startPanX + (newPanX - startPanX) * easeProgress;
+      const currentPanY = startPanY + (newPanY - startPanY) * easeProgress;
+
+      setZoomLevel(currentZoom);
+      setPanOffset({ x: currentPanX, y: currentPanY });
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    animate();
+  }, [calculateContentBounds, canvasRef, zoomLevel, panOffset, MIN_ZOOM, MAX_ZOOM]);
 
   // 鍵盤快捷鍵處理
   useEffect(() => {
@@ -467,6 +734,11 @@ const Whiteboard: React.FC = () => {
 
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const isCtrlOrCmd = isMac ? event.metaKey : event.ctrlKey;
+      
+      // 追蹤 Cmd/Ctrl 鍵狀態
+      if (event.metaKey || event.ctrlKey) {
+        setIsHoldingCmd(true);
+      }
 
       // 撤銷 (Ctrl/Cmd + Z)
       if (isCtrlOrCmd && event.key === 'z' && !event.shiftKey) {
@@ -576,11 +848,29 @@ const Whiteboard: React.FC = () => {
         }
         return;
       }
+
+      // 回到內容中心 (Home)
+      if (event.key === 'Home') {
+        event.preventDefault();
+        centerViewOnContent();
+        return;
+      }
+    };
+    
+    const handleKeyUp = (event: KeyboardEvent) => {
+      // 當釋放 Cmd/Ctrl 鍵時
+      if (!event.metaKey && !event.ctrlKey) {
+        setIsHoldingCmd(false);
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, selectAllNotes, copySelectedNotes, pasteNotes, duplicateSelectedNotes, deleteSelectedItems, moveSelectedNotes, selectedNote, selectedNotes, createGroup, ungroupNotes, selectedGroup, whiteboardData.notes]);
+    document.addEventListener('keyup', handleKeyUp);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [undo, redo, selectAllNotes, copySelectedNotes, pasteNotes, duplicateSelectedNotes, deleteSelectedItems, moveSelectedNotes, selectedNote, selectedNotes, createGroup, ungroupNotes, selectedGroup, whiteboardData.notes, centerViewOnContent]);
 
   const addStickyNote = useCallback((x: number, y: number) => {
     saveToHistory(whiteboardData); // 保存歷史記錄
@@ -595,7 +885,7 @@ const Whiteboard: React.FC = () => {
       color: '#FEF3C7'
     };
 
-    setWhiteboardData(prev => ({
+    updateWhiteboardData(prev => ({
       ...prev,
       notes: [...prev.notes, newNote]
     }));
@@ -608,18 +898,64 @@ const Whiteboard: React.FC = () => {
   }, [whiteboardData, saveToHistory]);
 
   const updateStickyNote = useCallback((id: string, updates: Partial<StickyNote>) => {
-    setWhiteboardData(prev => ({
+    // 如果正在更新位置並且正在拖曳，並且按住 Cmd 鍵，計算對齊
+    if (isDraggingNote && isHoldingCmd && (updates.x !== undefined || updates.y !== undefined)) {
+      const currentNote = whiteboardData.notes.find(n => n.id === id);
+      if (currentNote) {
+        const targetPosition = {
+          x: updates.x ?? currentNote.x,
+          y: updates.y ?? currentNote.y
+        };
+        
+        // 計算對齊
+        const alignmentResult = AlignmentService.calculateAlignment(
+          currentNote,
+          targetPosition,
+          whiteboardData.notes,
+          selectedNotes.includes(id) ? selectedNotes : []
+        );
+        
+        // 設置輔助線
+        setAlignmentGuides(alignmentResult.guides);
+        
+        // 使用吸附後的位置
+        updates = {
+          ...updates,
+          x: alignmentResult.snappedPosition.x,
+          y: alignmentResult.snappedPosition.y
+        };
+      }
+    } else if (!isHoldingCmd) {
+      // 如果沒有按住 Cmd，清除輔助線
+      setAlignmentGuides([]);
+    }
+    
+    updateWhiteboardData(prev => ({
       ...prev,
       notes: prev.notes.map(note => 
         note.id === id ? { ...note, ...updates } : note
       )
     }));
-  }, []);
+  }, [isDraggingNote, isHoldingCmd, whiteboardData.notes, selectedNotes]);
 
   const deleteStickyNote = useCallback((id: string) => {
     saveToHistory(whiteboardData); // 保存歷史記錄
     
-    setWhiteboardData(prev => {
+    // 清理選取狀態
+    if (selectedNote === id) {
+      setSelectedNote(null);
+    }
+    if (selectedNotes.includes(id)) {
+      setSelectedNotes(prev => prev.filter(noteId => noteId !== id));
+    }
+    if (autoEditNoteId === id) {
+      setAutoEditNoteId(null);
+    }
+    if (connectingFrom === id) {
+      setConnectingFrom(null);
+    }
+    
+    updateWhiteboardData(prev => {
       // 找到被刪除便利貼所屬的群組
       const deletedNote = prev.notes.find(note => note.id === id);
       const groupId = deletedNote?.groupId;
@@ -631,7 +967,7 @@ const Whiteboard: React.FC = () => {
               ? { ...group, noteIds: group.noteIds.filter(noteId => noteId !== id) }
               : group
           ).filter(group => group.noteIds.length > 0) // 移除空群組
-        : (prev.groups || []);
+        : prev.groups || []; // 保持原有的 groups，而不是返回空陣列
       
       return {
         ...prev,
@@ -640,7 +976,7 @@ const Whiteboard: React.FC = () => {
         groups: updatedGroups
       };
     });
-  }, [whiteboardData, saveToHistory]);
+  }, [whiteboardData, saveToHistory, selectedNote, selectedNotes, autoEditNoteId, connectingFrom]);
 
   const deleteEdge = useCallback((id: string) => {
     saveToHistory(whiteboardData); // 保存歷史記錄
@@ -683,7 +1019,7 @@ const Whiteboard: React.FC = () => {
     const canvasX = viewportX - rect.left;
     const canvasY = viewportY - rect.top;
     
-    // 考慮縮放和平移
+    // 先反向應用平移，再反向應用縮放
     const logicalX = (canvasX - panOffset.x) / zoomLevel;
     const logicalY = (canvasY - panOffset.y) / zoomLevel;
     
@@ -721,8 +1057,15 @@ const Whiteboard: React.FC = () => {
   const handleCanvasMouseDown = useCallback((event: React.MouseEvent) => {
     const target = event.target as HTMLElement;
     
-    // 只檢查直接的便利貼點擊
+    // 檢查是否點擊便利貼
     if (target.closest('.sticky-note')) {
+      return;
+    }
+    
+    // 檢查是否點擊群組 - SVG 元素需要特別處理
+    const svgElement = target.closest('svg');
+    if (svgElement && (target.tagName === 'rect' || target.tagName === 'text' || target.tagName === 'foreignObject')) {
+      // 這可能是群組相關的元素，不要清除選取狀態
       return;
     }
 
@@ -759,32 +1102,7 @@ const Whiteboard: React.FC = () => {
       setMousePosition({ x: logicalPos.x, y: logicalPos.y });
     }
 
-    // 處理拖曳選取
-    if (isSelecting) {
-      const logicalPos = viewportToLogical(event.clientX, event.clientY);
-      setSelectionEnd(logicalPos);
-      
-      // 實時計算預覽選中的便利貼
-      const minX = Math.min(selectionStart.x, logicalPos.x);
-      const maxX = Math.max(selectionStart.x, logicalPos.x);
-      const minY = Math.min(selectionStart.y, logicalPos.y);
-      const maxY = Math.max(selectionStart.y, logicalPos.y);
-      
-      const previewNoteIds = whiteboardData.notes
-        .filter(note => {
-          const noteLeft = note.x;
-          const noteRight = note.x + note.width;
-          const noteTop = note.y;
-          const noteBottom = note.y + note.height;
-          
-          // 檢查便利貼是否與選取框重疊
-          return !(noteRight < minX || noteLeft > maxX || noteBottom < minY || noteTop > maxY);
-        })
-        .map(note => note.id);
-      
-      setPreviewSelectedNotes(previewNoteIds);
-      return;
-    }
+    // 選取邏輯已移至全局事件處理器
 
     // 處理畫板拖曳
     if (isDragging) {
@@ -798,7 +1116,7 @@ const Whiteboard: React.FC = () => {
       });
       return;
     }
-  }, [connectingFrom, viewportToLogical, isDragging, dragStart, scrollStart, isSelecting]);
+  }, [connectingFrom, viewportToLogical, isDragging, dragStart, scrollStart]);
 
   const handleCanvasMouseUp = useCallback(() => {
     if (longPressTimer.current) {
@@ -821,35 +1139,11 @@ const Whiteboard: React.FC = () => {
       return;
     }
     
-    // 結束拖曳選取
-    if (isSelecting) {
-      // 計算選取範圍
-      const minX = Math.min(selectionStart.x, selectionEnd.x);
-      const maxX = Math.max(selectionStart.x, selectionEnd.x);
-      const minY = Math.min(selectionStart.y, selectionEnd.y);
-      const maxY = Math.max(selectionStart.y, selectionEnd.y);
-      
-      // 找出範圍內的便利貼
-      const selectedNoteIds = whiteboardData.notes
-        .filter(note => {
-          const noteLeft = note.x;
-          const noteRight = note.x + note.width;
-          const noteTop = note.y;
-          const noteBottom = note.y + note.height;
-          
-          // 檢查便利貼是否與選取框重疊
-          return !(noteRight < minX || noteLeft > maxX || noteBottom < minY || noteTop > maxY);
-        })
-        .map(note => note.id);
-      
-      setSelectedNotes(selectedNoteIds);
-      setIsSelecting(false);
-      setPreviewSelectedNotes([]); // 清除預覽狀態
-    }
+    // 選取邏輯已移至全局事件處理器
     
     // 重置畫板拖曳狀態
     setIsDragging(false);
-  }, [isSelecting, selectionStart, selectionEnd, whiteboardData.notes, connectingFrom, hoveredNote, addEdge]);
+  }, [connectingFrom, hoveredNote, addEdge]);
 
   const handleCanvasRightClick = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -959,6 +1253,71 @@ const Whiteboard: React.FC = () => {
     };
   }, [handleWheel]);
 
+  // 處理選取操作的全局事件監聽
+  useEffect(() => {
+    if (!isSelecting || groupDragState?.isDragging) return;
+
+    const handleGlobalMouseMove = (event: MouseEvent) => {
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const logicalPos = viewportToLogical(event.clientX, event.clientY);
+        setSelectionEnd(logicalPos);
+        
+        // 動態更新預覽選取的便利貼
+        const minX = Math.min(selectionStart.x, logicalPos.x);
+        const maxX = Math.max(selectionStart.x, logicalPos.x);
+        const minY = Math.min(selectionStart.y, logicalPos.y);
+        const maxY = Math.max(selectionStart.y, logicalPos.y);
+        
+        const previewNoteIds = whiteboardData.notes
+          .filter(note => {
+            const noteLeft = note.x;
+            const noteRight = note.x + note.width;
+            const noteTop = note.y;
+            const noteBottom = note.y + note.height;
+            return !(noteRight < minX || noteLeft > maxX || noteBottom < minY || noteTop > maxY);
+          })
+          .map(note => note.id);
+        
+        setPreviewSelectedNotes(previewNoteIds);
+      }
+    };
+
+    const handleGlobalMouseUp = () => {
+      // 計算選取範圍
+      const minX = Math.min(selectionStart.x, selectionEnd.x);
+      const maxX = Math.max(selectionStart.x, selectionEnd.x);
+      const minY = Math.min(selectionStart.y, selectionEnd.y);
+      const maxY = Math.max(selectionStart.y, selectionEnd.y);
+      
+      // 找出範圍內的便利貼
+      const selectedNoteIds = whiteboardData.notes
+        .filter(note => {
+          const noteLeft = note.x;
+          const noteRight = note.x + note.width;
+          const noteTop = note.y;
+          const noteBottom = note.y + note.height;
+          
+          // 檢查便利貼是否與選取框重疊
+          return !(noteRight < minX || noteLeft > maxX || noteBottom < minY || noteTop > maxY);
+        })
+        .map(note => note.id);
+      
+      setSelectedNotes(selectedNoteIds);
+      setIsSelecting(false);
+      setPreviewSelectedNotes([]); // 清除預覽狀態
+    };
+
+    // 添加全局事件監聽器
+    window.addEventListener('mousemove', handleGlobalMouseMove);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [isSelecting, selectionStart, selectionEnd, whiteboardData.notes, viewportToLogical, groupDragState]);
+
   // 觸控板縮放處理（Mac 雙指縮放）
   const pinchDataRef = useRef<{
     initialDistance: number;
@@ -1061,34 +1420,6 @@ const Whiteboard: React.FC = () => {
     }
   }, [whiteboardData.notes]);
 
-  // 縮放控制函數
-  const zoomIn = useCallback(() => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const centerX = rect.left + canvas.clientWidth / 2;
-    const centerY = rect.top + canvas.clientHeight / 2;
-    handleZoom(1, centerX, centerY);
-  }, [handleZoom]);
-
-  const zoomOut = useCallback(() => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const centerX = rect.left + canvas.clientWidth / 2;
-    const centerY = rect.top + canvas.clientHeight / 2;
-    handleZoom(-1, centerX, centerY);
-  }, [handleZoom]);
-
-  const resetZoom = useCallback(() => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const centerX = (canvas.clientWidth - 3000) / 2;
-    const centerY = (canvas.clientHeight - 2000) / 2;
-    
-    setZoomLevel(1);
-    setPanOffset({ x: centerX, y: centerY });
-  }, []);
 
   // 計算多選便利貼的邊界框
   const getMultiSelectionBounds = useCallback(() => {
@@ -1173,11 +1504,72 @@ const Whiteboard: React.FC = () => {
     const networkAnalysis = analyzeRelatedNetwork(noteId);
     if (!networkAnalysis) return;
 
-    setAiResult('🧠 正在分析相關概念並發想...');
-    
+    // 定義真實的 Chain of Thought 思考步驟（移除沒有結果的第一步）
+    const thinkingSteps = [
+      '📊 深度分析思維導圖整體結構...',
+      '🎯 分析目標節點在整體架構中的定位...',
+      '🧠 制定智能發想策略...',
+      '✨ 基於策略生成創新想法...'
+    ];
+
+    // 設置 loading 狀態
+    setAiLoadingStates(prev => ({ 
+      ...prev, 
+      brainstorm: true, 
+      targetNoteId: noteId,
+      thinkingSteps,
+      currentStep: 0
+    }));
+
     try {
+      // 實際調用 AI 服務，並傳遞 onProgress 回調
       const { aiService } = await import('../services/aiService');
-      const ideas = await aiService.brainstormWithContext(networkAnalysis);
+      
+      // 定義進度回調函數
+      const onProgress = (step: string, progress: number, result?: string) => {
+        console.log(`AI Progress: ${step} (${progress}%)`);
+        if (result) {
+          console.log(`Step Result:`, result);
+        }
+        
+        // 根據進度更新當前步驟（調整為4個步驟）
+        let currentStepIndex = 0;
+        if (progress >= 100) currentStepIndex = 4;      // 完成
+        else if (progress >= 90) currentStepIndex = 3;  // Step 4
+        else if (progress >= 70) currentStepIndex = 2;  // Step 3
+        else if (progress >= 50) currentStepIndex = 1;  // Step 2
+        else if (progress >= 25) currentStepIndex = 0;  // Step 1
+        
+        setAiLoadingStates(prev => {
+          const newState = { 
+            ...prev, 
+            currentStep: currentStepIndex 
+          };
+          
+          // 如果有詳細結果，將其存儲到 stepResults 中
+          if (result && progress >= 25) {
+            // 根據進度確定步驟索引（調整為0-3）
+            let resultStepIndex = 0;
+            if (progress >= 100) resultStepIndex = 3;       // 最終結果
+            else if (progress >= 90) resultStepIndex = 3;   // Step 4
+            else if (progress >= 70) resultStepIndex = 2;   // Step 3  
+            else if (progress >= 50) resultStepIndex = 1;   // Step 2
+            else if (progress >= 25) resultStepIndex = 0;   // Step 1
+            
+            newState.stepResults = {
+              ...prev.stepResults,
+              [resultStepIndex]: result
+            };
+          }
+          
+          return newState;
+        });
+        
+        // 不要在這裡設置 aiResult，讓 SidePanel 顯示詳細的 chain of thought
+        // aiResult 現在只用於非 brainstorm 的情況
+      };
+      
+      const ideas = await aiService.brainstormWithContext(networkAnalysis, whiteboardData, onProgress);
       
       // 為每個想法創建新的便利貼 - 緊湊佈局適應簡短內容
       const newNotes = ideas.map((idea, index) => {
@@ -1202,20 +1594,194 @@ const Whiteboard: React.FC = () => {
         to: newNote.id
       }));
 
-      setWhiteboardData(prev => ({
-        notes: [...prev.notes, ...newNotes],
-        edges: [...prev.edges, ...newEdges]
-      }));
+      // 暫時停用即時同步以避免衝突
+      if (user?.id && currentProjectId) {
+        SyncService.disableRealtimeSync(currentProjectId);
+      }
 
-      const contextInfo = networkAnalysis.networkSize > 1 
-        ? `考慮了 ${networkAnalysis.networkSize} 個關聯概念` 
-        : '基於單一概念發想';
+      // 使用 updater function 確保狀態更新的原子性
+      setWhiteboardData(prev => {
+        const newData = {
+          notes: [...prev.notes, ...newNotes],
+          edges: [...prev.edges, ...newEdges],
+          groups: prev.groups || []
+        };
+        
+        // 立即儲存到本地以防止資料遺失
+        if (currentProjectId) {
+          setTimeout(() => {
+            ProjectService.saveProjectData(currentProjectId, newData, { zoomLevel, panOffset });
+          }, 100);
+        }
+        
+        return newData;
+      });
 
-      setAiResult(`🧠 AI 發想完成！\n\n基於「${networkAnalysis.targetNote.content}」生成 ${ideas.length} 個簡潔想法。\n\n${contextInfo}，已創建新的便利貼和連線。`);
+      // 延遲重新啟用即時同步，並確保不會覆蓋本地更改
+      setTimeout(() => {
+        if (user?.id && currentProjectId) {
+          // 重新啟用前先同步到雲端
+          const currentData = ProjectService.loadProjectData(currentProjectId);
+          if (currentData) {
+            SyncService.saveProjectData(user.id, currentProjectId, currentData).then(() => {
+              SyncService.enableRealtimeSync(currentProjectId, user.id, (data) => {
+                setWhiteboardData(data);
+              });
+            }).catch(() => {
+              // 即使同步失敗也要重新啟用即時同步
+              SyncService.enableRealtimeSync(currentProjectId, user.id, (data) => {
+                setWhiteboardData(data);
+              });
+            });
+          }
+        }
+      }, 3000); // 增加到3秒
+
+      // 保留 Chain of Thought 結果，不覆蓋
+      // 最終結果已經在 onProgress 回調中處理了
     } catch (error) {
       console.error('AI Brainstorm error:', error);
-      setAiResult('❌ AI 發想功能暫時無法使用。');
+      // 附加錯誤訊息而不是覆蓋
+      setAiResult(prev => prev + '\n\n❌ AI 發想過程中發生錯誤。');
+    } finally {
+      // 清除 loading 狀態
+      setAiLoadingStates(prev => ({ 
+        ...prev, 
+        brainstorm: false, 
+        targetNoteId: undefined,
+        thinkingSteps: undefined,
+        currentStep: undefined,
+        stepResults: undefined
+      }));
     }
+  };
+
+  const handleAskAI = (noteId: string) => {
+    setAskAINoteId(noteId);
+    setShowAskAIDialog(true);
+    setCustomPrompt('');
+  };
+
+  const handleSubmitAskAI = async () => {
+    if (!askAINoteId || !customPrompt.trim()) return;
+    
+    // 檢查是否為多選模式（ID 包含逗號）
+    const isMultiSelect = askAINoteId.includes(',');
+    
+    setShowAskAIDialog(false);
+    
+    // 設置 loading 狀態
+    setAiLoadingStates(prev => ({ 
+      ...prev, 
+      askAI: true, 
+      targetNoteId: isMultiSelect ? askAINoteId : askAINoteId 
+    }));
+    setAiResult('💬 正在向 AI 詢問...');
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      let result: string;
+      let targetX: number, targetY: number;
+      let sourceNoteIds: string[] = [];
+      
+      if (isMultiSelect) {
+        // 多選模式：處理多個便利貼
+        const noteIds = askAINoteId.split(',');
+        const selectedNotesData = whiteboardData.notes.filter(note => 
+          noteIds.includes(note.id)
+        );
+        
+        if (selectedNotesData.length === 0) return;
+        
+        // 計算新便利貼的位置（在選中區域的右側）
+        const bounds = selectedNotesData.reduce((acc, note) => ({
+          minX: Math.min(acc.minX, note.x),
+          maxX: Math.max(acc.maxX, note.x + note.width),
+          minY: Math.min(acc.minY, note.y),
+          maxY: Math.max(acc.maxY, note.y + note.height)
+        }), {
+          minX: Infinity, maxX: -Infinity,
+          minY: Infinity, maxY: -Infinity
+        });
+        
+        targetX = bounds.maxX + 50;
+        targetY = bounds.minY + (bounds.maxY - bounds.minY) / 2 - 100;
+        sourceNoteIds = noteIds;
+        
+        // 使用多選分析 API
+        const relatedEdges = whiteboardData.edges.filter(edge => 
+          noteIds.includes(edge.from) || noteIds.includes(edge.to)
+        );
+        
+        result = await aiService.askAboutSelection(
+          selectedNotesData, 
+          relatedEdges, 
+          whiteboardData,
+          customPrompt
+        );
+      } else {
+        // 單選模式：保持原有邏輯
+        const networkAnalysis = analyzeRelatedNetwork(askAINoteId);
+        if (!networkAnalysis) return;
+        
+        targetX = networkAnalysis.targetNote.x + 250;
+        targetY = networkAnalysis.targetNote.y;
+        sourceNoteIds = [askAINoteId];
+        
+        result = await aiService.askWithContext(
+          networkAnalysis, 
+          whiteboardData, 
+          customPrompt
+        );
+      }
+      
+      // 創建一個新的便利貼來顯示結果
+      // 根據內容長度動態調整高度
+      const contentLength = result.length;
+      const estimatedHeight = Math.max(250, Math.min(400, 200 + Math.floor(contentLength / 50) * 20));
+      
+      const newNote = {
+        id: uuidv4(),
+        x: targetX,
+        y: targetY,
+        width: 250,
+        height: estimatedHeight,
+        content: result,
+        color: '#EDE9FE' // 紫色表示 AI 回答
+      };
+      
+      // 創建連線（如果是多選，連到所有選中的便利貼）
+      const newEdges = sourceNoteIds.map(sourceId => ({
+        id: uuidv4(),
+        from: sourceId,
+        to: newNote.id
+      }));
+
+      setWhiteboardData(prev => ({
+        notes: [...prev.notes, newNote],
+        edges: [...prev.edges, ...newEdges],
+        groups: prev.groups || []
+      }));
+      
+      const successMessage = isMultiSelect
+        ? `💬 AI 回答完成！\n\n基於 ${sourceNoteIds.length} 個選中便利貼的詢問：\n"${customPrompt}"\n\n已創建新的便利貼顯示回答。`
+        : `💬 AI 回答完成！\n\n基於便利貼的詢問：\n"${customPrompt}"\n\n已創建新的便利貼顯示回答。`;
+      
+      setAiResult(successMessage);
+    } catch (error) {
+      console.error('AI Ask error:', error);
+      setAiResult('❌ AI 詢問功能暫時無法使用。');
+    } finally {
+      // 清除 loading 狀態
+      setAiLoadingStates(prev => ({ 
+        ...prev, 
+        askAI: false, 
+        targetNoteId: undefined 
+      }));
+    }
+    
+    setAskAINoteId(null);
+    setCustomPrompt('');
   };
 
   const handleAIAnalyze = async () => {
@@ -1224,6 +1790,8 @@ const Whiteboard: React.FC = () => {
       return;
     }
 
+    // 設置 loading 狀態
+    setAiLoadingStates(prev => ({ ...prev, analyze: true }));
     setAiResult('📊 正在分析白板結構...');
     
     try {
@@ -1233,6 +1801,9 @@ const Whiteboard: React.FC = () => {
     } catch (error) {
       console.error('AI Analyze error:', error);
       setAiResult('❌ AI 分析功能暫時無法使用，請稍後再試。');
+    } finally {
+      // 清除 loading 狀態
+      setAiLoadingStates(prev => ({ ...prev, analyze: false }));
     }
   };
 
@@ -1242,6 +1813,8 @@ const Whiteboard: React.FC = () => {
       return;
     }
 
+    // 設置 loading 狀態
+    setAiLoadingStates(prev => ({ ...prev, summarize: true }));
     setAiResult('📝 正在生成摘要...');
     
     try {
@@ -1251,10 +1824,643 @@ const Whiteboard: React.FC = () => {
     } catch (error) {
       console.error('AI Summarize error:', error);
       setAiResult('❌ AI 摘要功能暫時無法使用，請稍後再試。');
+    } finally {
+      // 清除 loading 狀態
+      setAiLoadingStates(prev => ({ ...prev, summarize: false }));
+    }
+  };
+
+  // AI 選取分析
+  const handleAIAnalyzeSelection = async () => {
+    const selectedNotesData = whiteboardData.notes.filter(note => 
+      selectedNotes.includes(note.id)
+    );
+    const relatedEdges = whiteboardData.edges.filter(edge => 
+      selectedNotes.includes(edge.from) || selectedNotes.includes(edge.to)
+    );
+
+    setAiResult('🔍 正在分析選取區域...');
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      const analysis = await aiService.analyzeSelection(selectedNotesData, relatedEdges);
+      setAiResult(analysis);
+    } catch (error) {
+      console.error('AI Analyze Selection error:', error);
+      setAiResult('❌ 分析功能暫時無法使用。');
+    }
+    setShowAIMenu(false);
+  };
+
+  // AI 改進建議
+  const handleAISuggestImprovements = async () => {
+    const selectedNotesData = whiteboardData.notes.filter(note => 
+      selectedNotes.includes(note.id)
+    );
+
+    setAiResult('✨ 正在生成改進建議...');
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      const suggestions = await aiService.suggestImprovements(selectedNotesData);
+      setAiResult(suggestions);
+    } catch (error) {
+      console.error('AI Suggest Improvements error:', error);
+      setAiResult('❌ 建議功能暫時無法使用。');
+    }
+    setShowAIMenu(false);
+  };
+
+  // AI 內容重構
+  const handleAIRestructure = async () => {
+    const selectedNotesData = whiteboardData.notes.filter(note => 
+      selectedNotes.includes(note.id)
+    );
+    const relatedEdges = whiteboardData.edges.filter(edge => 
+      selectedNotes.includes(edge.from) || selectedNotes.includes(edge.to)
+    );
+
+    setAiResult('🔄 正在分析並重構內容...');
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      const result = await aiService.restructureContent(selectedNotesData, relatedEdges);
+      setAiResult(result.suggestion);
+    } catch (error) {
+      console.error('AI Restructure error:', error);
+      setAiResult('❌ 重構功能暫時無法使用。');
+    }
+    setShowAIMenu(false);
+  };
+
+  // AI SWOT 分析
+  const handleAISWOT = async () => {
+    const selectedNotesData = whiteboardData.notes.filter(note => 
+      selectedNotes.includes(note.id)
+    );
+    const topic = selectedNotesData.length > 0 ? selectedNotesData[0].content : '主題';
+
+    setAiResult('📊 正在進行 SWOT 分析...');
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      const swot = await aiService.generateSWOT(topic, selectedNotesData);
+      
+      // 格式化 SWOT 結果
+      const swotResult = `📊 SWOT 分析：${topic}
+
+💪 優勢 (Strengths):
+${swot.strengths.map(s => `• ${s}`).join('\n')}
+
+⚠️ 劣勢 (Weaknesses):
+${swot.weaknesses.map(w => `• ${w}`).join('\n')}
+
+🚀 機會 (Opportunities):
+${swot.opportunities.map(o => `• ${o}`).join('\n')}
+
+🔥 威脅 (Threats):
+${swot.threats.map(t => `• ${t}`).join('\n')}`;
+      
+      setAiResult(swotResult);
+    } catch (error) {
+      console.error('AI SWOT error:', error);
+      setAiResult('❌ SWOT 分析功能暫時無法使用。');
+    }
+    setShowAIMenu(false);
+  };
+
+  // AI 心智圖生成
+  const handleAIMindMap = async () => {
+    const selectedNotesData = whiteboardData.notes.filter(note => 
+      selectedNotes.includes(note.id)
+    );
+    const centralIdea = selectedNotesData.length > 0 ? selectedNotesData[0].content : '核心概念';
+
+    setAiResult('🧩 正在生成心智圖...');
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      const mindMap = await aiService.generateMindMap(centralIdea);
+      
+      // 創建心智圖便利貼
+      saveToHistory(whiteboardData);
+      const centerX = 400;
+      const centerY = 300;
+      const radius = 150;
+      
+      const newNotes: StickyNote[] = mindMap.nodes.map((node, index) => {
+        let x = centerX;
+        let y = centerY;
+        
+        if (node.level === 0) {
+          // 中心節點
+          x = centerX;
+          y = centerY;
+        } else {
+          // 計算圓形佈局
+          const angle = (index / mindMap.nodes.filter(n => n.level === node.level).length) * 2 * Math.PI;
+          x = centerX + radius * node.level * Math.cos(angle);
+          y = centerY + radius * node.level * Math.sin(angle);
+        }
+        
+        return {
+          id: node.id,
+          content: node.content,
+          x,
+          y,
+          width: 120,
+          height: 80,
+          color: node.level === 0 ? '#FEF3C7' : '#DBEAFE'
+        };
+      });
+      
+      const newEdges: Edge[] = mindMap.connections.map(conn => ({
+        id: uuidv4(),
+        from: conn.from,
+        to: conn.to
+      }));
+      
+      updateWhiteboardData({
+        ...whiteboardData,
+        notes: [...whiteboardData.notes, ...newNotes],
+        edges: [...whiteboardData.edges, ...newEdges]
+      });
+      
+      setAiResult(`🧩 已生成「${centralIdea}」的心智圖！`);
+    } catch (error) {
+      console.error('AI Mind Map error:', error);
+      setAiResult('❌ 心智圖生成功能暫時無法使用。');
+    }
+    setShowAIMenu(false);
+  };
+
+  // AI 關鍵路徑分析
+  const handleAICriticalPath = async () => {
+    const selectedNotesData = whiteboardData.notes.filter(note => 
+      selectedNotes.includes(note.id)
+    );
+    const relatedEdges = whiteboardData.edges.filter(edge => 
+      selectedNotes.includes(edge.from) && selectedNotes.includes(edge.to)
+    );
+
+    setAiResult('🛤️ 正在分析關鍵路徑...');
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      const pathAnalysis = await aiService.analyzeCriticalPath(selectedNotesData, relatedEdges);
+      
+      const pathResult = `🛤️ 關鍵路徑分析
+
+📍 關鍵路徑:
+${pathAnalysis.path.map((step, idx) => `${idx + 1}. ${step}`).join('\n')}
+
+⚠️ 瓶頸點:
+${pathAnalysis.bottlenecks.map(b => `• ${b}`).join('\n')}
+
+💡 優化建議:
+${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
+      
+      setAiResult(pathResult);
+    } catch (error) {
+      console.error('AI Critical Path error:', error);
+      setAiResult('❌ 關鍵路徑分析功能暫時無法使用。');
+    }
+    setShowAIMenu(false);
+  };
+
+  // AI 詢問選取區域
+  const handleAIAskSelection = () => {
+    // 收集所有選中的便利貼內容
+    const selectedNotesData = whiteboardData.notes.filter(note => 
+      selectedNotes.includes(note.id)
+    );
+    
+    if (selectedNotesData.length === 0) return;
+    
+    // 將選中的便利貼 ID 存儲為陣列，用於多選詢問
+    setAskAINoteId(selectedNotes.join(','));
+    setShowAskAIDialog(true);
+    setCustomPrompt('');
+  };
+
+  // AI 收斂節點 - 智能精簡子節點
+  const handleAIConvergeNodes = async (isRegenerate = false) => {
+    // 檢查是否選中了單一便利貼
+    if (selectedNotes.length !== 1) {
+      setAiResult('❗ 請選擇一個便利貼來收斂其子節點');
+      return;
+    }
+
+    const targetNoteId = selectedNotes[0];
+    const targetNote = whiteboardData.notes.find(note => note.id === targetNoteId);
+    if (!targetNote) return;
+
+    // 找到該便利貼的子節點（連出去的節點）
+    const childEdges = whiteboardData.edges.filter(edge => edge.from === targetNoteId);
+    const childNotes = childEdges.map(edge => 
+      whiteboardData.notes.find(note => note.id === edge.to)
+    ).filter(note => note !== undefined) as StickyNote[];
+
+    if (childNotes.length < 3) {
+      setAiResult('❗ 需要至少3個子節點才能進行收斂分析');
+      return;
+    }
+
+    if (!isRegenerate) {
+      setAiResult(`🎯 正在分析「${targetNote.content}」的 ${childNotes.length} 個子節點...`);
+    }
+
+    try {
+      const { aiService } = await import('../services/aiService');
+      const maxKeepCount = Math.max(2, Math.min(3, Math.floor(childNotes.length * 0.6))); // 保留 60% 但最少2個最多3個
+      const result = await aiService.convergeNodes(targetNote, childNotes, whiteboardData, maxKeepCount);
+
+      // 保存結果
+      setPendingAIResult({
+        type: 'converge',
+        result: result,
+        targetNote: targetNote,
+        childNotes: childNotes
+      });
+
+      // 設置預覽數據
+      setAIPreviewData({
+        type: 'converge',
+        title: `🎯 AI 節點收斂預覽`,
+        description: `分析「${targetNote.content}」的子節點，建議保留最核心的項目`,
+        preview: {
+          targetNote: targetNote.content,
+          keepNodes: result.keepNodes,
+          removeNodes: result.removeNodes,
+          analysis: result.analysis,
+          originalCount: childNotes.length,
+          keepCount: result.keepNodes.length,
+          removeCount: result.removeNodes.length
+        },
+        onApply: () => {
+          if (!pendingAIResult || pendingAIResult.type !== 'converge') return;
+
+          saveToHistory(whiteboardData);
+          
+          const removeNodeIds = result.removeNodes.map(node => node.id);
+          const removeEdgeIds = whiteboardData.edges
+            .filter(edge => removeNodeIds.includes(edge.from) || removeNodeIds.includes(edge.to))
+            .map(edge => edge.id);
+
+          // 移除節點和相關連線
+          updateWhiteboardData({
+            ...whiteboardData,
+            notes: whiteboardData.notes.filter(note => !removeNodeIds.includes(note.id)),
+            edges: whiteboardData.edges.filter(edge => !removeEdgeIds.includes(edge.id))
+          });
+
+          const keepSummary = result.keepNodes.map(n => `✅ ${n.content}`).join('\n');
+          const removeSummary = result.removeNodes.map(n => `❌ ${n.content}`).join('\n');
+
+          setAiResult(`🎯 節點收斂完成！\n\n${result.analysis}\n\n保留 ${result.keepNodes.length} 個核心項目：\n${keepSummary}\n\n移除 ${result.removeNodes.length} 個項目：\n${removeSummary}`);
+          setPendingAIResult(null);
+        },
+        onReject: () => {
+          setAiResult('已取消節點收斂');
+          setPendingAIResult(null);
+        },
+        onRegenerate: () => {
+          handleAIConvergeNodes(true);
+        }
+      });
+
+      setShowAIPreview(true);
+      if (!isRegenerate) {
+        setAiResult('🎯 節點收斂分析完成！請查看預覽。');
+      }
+    } catch (error) {
+      console.error('AI Converge Nodes error:', error);
+      setAiResult('❌ AI 節點收斂功能暫時無法使用。');
+    }
+  };
+
+  // AI 自動分組
+  const handleAIAutoGroup = async (isRegenerate = false) => {
+    if (!isRegenerate) {
+      setAiResult('📁 正在進行 AI 自動分組...');
+    }
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      const result = await aiService.autoGroupNotes(whiteboardData.notes);
+      
+      // 保存結果以供應用
+      setPendingAIResult({
+        type: 'group',
+        result: result
+      });
+      
+      // 準備預覽資料
+      const previewGroups = result.groups.map(group => ({
+        ...group,
+        notes: whiteboardData.notes.filter(note => group.noteIds.includes(note.id))
+      }));
+      
+      // 顯示預覽
+      setAIPreviewData({
+        type: 'group',
+        title: '🤖 AI 自動分組預覽',
+        description: '以下是 AI 建議的分組方案，您可以選擇套用、重新生成或拒絕。',
+        preview: {
+          groups: previewGroups,
+          ungrouped: result.ungrouped
+        },
+        onApply: () => {
+          saveToHistory(whiteboardData);
+          
+          // 應用分組結果
+          const newGroups = result.groups.map(group => ({
+            id: group.id,
+            name: group.name,
+            color: group.color,
+            noteIds: group.noteIds,
+            createdAt: new Date()
+          }));
+          
+          // 更新便利貼的 groupId
+          const updatedNotes = whiteboardData.notes.map(note => {
+            const group = result.groups.find(g => g.noteIds.includes(note.id));
+            if (group) {
+              return { ...note, groupId: group.id };
+            }
+            return note;
+          });
+          
+          updateWhiteboardData({
+            ...whiteboardData,
+            notes: updatedNotes,
+            groups: [...(whiteboardData.groups || []), ...newGroups]
+          });
+          
+          const groupSummary = result.groups.map(g => 
+            `📁 ${g.name} (${g.noteIds.length}個項目)\n   理由: ${g.reason}`
+          ).join('\n\n');
+          
+          setAiResult(`✅ AI 自動分組完成！\n\n${groupSummary}\n\n未分組項目: ${result.ungrouped.length}個`);
+          setPendingAIResult(null);
+        },
+        onReject: () => {
+          setAiResult('已取消 AI 自動分組');
+          setPendingAIResult(null);
+        },
+        onRegenerate: () => {
+          setAiResult('🔄 正在重新生成分組...');
+          handleAIAutoGroup(true);
+        }
+      });
+      
+      setShowAIPreview(true);
+    } catch (error) {
+      console.error('AI Auto Group error:', error);
+      setAiResult('❌ AI 自動分組功能暫時無法使用。');
+    }
+  };
+
+  // AI 自動生成便利貼
+  const handleAIAutoGenerate = async (isRegenerate = false) => {
+    if (!isRegenerate) {
+      setAiResult('✨ 正在生成新的便利貼...');
+    }
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      // 計算生成位置（在畫布中心或選定區域附近）
+      const targetArea = selectedNotes.length > 0 
+        ? (() => {
+            const selectedNote = whiteboardData.notes.find(n => n.id === selectedNotes[0]);
+            return selectedNote ? { x: selectedNote.x + 250, y: selectedNote.y } : { x: 600, y: 400 };
+          })()
+        : { x: 600, y: 400 };
+      
+      const result = await aiService.autoGenerateNotes(whiteboardData, targetArea);
+      
+      // 保存結果
+      setPendingAIResult({
+        type: 'generate',
+        result: result,
+        targetArea: targetArea
+      });
+      
+      // 顯示預覽
+      setAIPreviewData({
+        type: 'generate',
+        title: '🤖 AI 生成便利貼預覽',
+        description: '以下是 AI 根據現有內容生成的新便利貼，您可以查看實際效果並決定是否套用。',
+        preview: {
+          notes: result.notes
+        },
+        onApply: () => {
+          // 創建新便利貼
+          const newNotes = result.notes.map((note, index) => ({
+            id: `ai-note-${Date.now()}-${index}`,
+            content: note.content,
+            x: note.x,
+            y: note.y,
+            width: 200,
+            height: 150,
+            color: note.color
+          }));
+          
+          updateWhiteboardData({
+            ...whiteboardData,
+            notes: [...whiteboardData.notes, ...newNotes]
+          });
+          
+          const noteSummary = result.notes.map(n => 
+            `📝 ${n.content}\n   理由: ${n.reason}`
+          ).join('\n\n');
+          
+          setAiResult(`✅ 已生成 ${result.notes.length} 個新便利貼！\n\n${noteSummary}`);
+          setPendingAIResult(null);
+        },
+        onReject: () => {
+          setAiResult('已取消生成新便利貼');
+          setPendingAIResult(null);
+        },
+        onRegenerate: () => {
+          setAiResult('🔄 正在重新生成便利貼...');
+          handleAIAutoGenerate(true);
+        }
+      });
+      
+      setShowAIPreview(true);
+    } catch (error) {
+      console.error('AI Auto Generate error:', error);
+      setAiResult('❌ AI 生成便利貼功能暫時無法使用。');
+    }
+  };
+
+  // AI 自動連線
+  const handleAIAutoConnect = async (isRegenerate = false) => {
+    const targetNotes = selectedNotes.length > 0
+      ? whiteboardData.notes.filter(note => selectedNotes.includes(note.id))
+      : whiteboardData.notes;
+    
+    if (!isRegenerate) {
+      setAiResult('🔗 正在分析並建立連線...');
+    }
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      const result = await aiService.autoConnectNotes(targetNotes, whiteboardData.edges);
+      
+      // 保存結果
+      setPendingAIResult({
+        type: 'connect',
+        result: result,
+        targetNotes: targetNotes
+      });
+      
+      // 準備預覽資料（加入便利貼內容）
+      const previewEdges = result.edges.map(edge => ({
+        ...edge,
+        fromContent: targetNotes.find(n => n.id === edge.from)?.content || '未知',
+        toContent: targetNotes.find(n => n.id === edge.to)?.content || '未知'
+      }));
+      
+      // 顯示預覽
+      setAIPreviewData({
+        type: 'connect',
+        title: '🤖 AI 自動連線預覽',
+        description: '以下是 AI 分析出的概念連接關係，您可以查看視覺化預覽並決定是否套用。',
+        preview: {
+          edges: previewEdges.filter(edge => edge.confidence > 0.6)
+        },
+        onApply: () => {
+          // 創建新連線（過濾掉低信心度的）
+          const newEdges = result.edges
+            .filter(edge => edge.confidence > 0.6)
+            .map(edge => ({
+              id: `ai-edge-${Date.now()}-${edge.from}-${edge.to}`,
+              from: edge.from,
+              to: edge.to
+            }));
+          
+          updateWhiteboardData({
+            ...whiteboardData,
+            edges: [...whiteboardData.edges, ...newEdges]
+          });
+          
+          const edgeSummary = result.edges
+            .filter(edge => edge.confidence > 0.6)
+            .map(e => {
+              const fromNote = targetNotes.find(n => n.id === e.from);
+              const toNote = targetNotes.find(n => n.id === e.to);
+              return `🔗 ${fromNote?.content} → ${toNote?.content}\n   理由: ${e.reason} (信心度: ${Math.round(e.confidence * 100)}%)`;
+            }).join('\n\n');
+          
+          setAiResult(`✅ 已建立 ${newEdges.length} 條新連線！\n\n${edgeSummary}`);
+          setPendingAIResult(null);
+        },
+        onReject: () => {
+          setAiResult('已取消自動連線');
+          setPendingAIResult(null);
+        },
+        onRegenerate: () => {
+          setAiResult('🔄 正在重新分析連線...');
+          handleAIAutoConnect(true);
+        }
+      });
+      
+      setShowAIPreview(true);
+    } catch (error) {
+      console.error('AI Auto Connect error:', error);
+      setAiResult('❌ AI 自動連線功能暫時無法使用。');
+    }
+  };
+
+  // AI 智能整理
+  const handleAISmartOrganize = async (isRegenerate = false) => {
+    if (!isRegenerate) {
+      setAiResult('🎯 正在進行智能整理...');
+    }
+    
+    try {
+      const { aiService } = await import('../services/aiService');
+      const result = await aiService.smartOrganize(whiteboardData);
+      
+      // 保存結果
+      setPendingAIResult(result);
+      
+      // 設置預覽數據
+      setAIPreviewData({
+        type: 'organize',
+        title: 'AI 智能整理預覽',
+        description: '以下是 AI 對白板內容的整理建議',
+        preview: {
+          reason: result.reason,
+          layout: result.layout,
+          newGroups: result.newGroups,
+          removeSuggestions: result.removeSuggestions
+        },
+        onApply: () => {
+          if (!pendingAIResult) return;
+          
+          saveToHistory(whiteboardData);
+          
+          // 批次更新便利貼位置
+          const updatedNotes = whiteboardData.notes.map(note => {
+            const newPosition = pendingAIResult.layout.find(l => l.noteId === note.id);
+            if (newPosition) {
+              return {
+                ...note,
+                x: newPosition.newX,
+                y: newPosition.newY
+              };
+            }
+            return note;
+          });
+          
+          // 更新群組
+          const updatedGroups = [...(whiteboardData.groups || []), ...pendingAIResult.newGroups];
+          
+          // 移除建議的冗餘便利貼（如果有）
+          if (pendingAIResult.removeSuggestions.length > 0) {
+            const filteredNotes = updatedNotes.filter(note => 
+              !pendingAIResult.removeSuggestions.includes(note.id)
+            );
+            updateWhiteboardData({
+              ...whiteboardData,
+              notes: filteredNotes,
+              groups: updatedGroups
+            });
+          } else {
+            updateWhiteboardData({
+              ...whiteboardData,
+              notes: updatedNotes,
+              groups: updatedGroups
+            });
+          }
+          
+          setAiResult(`✅ 智能整理完成！\n\n${pendingAIResult.reason}\n\n調整項目: ${pendingAIResult.layout.length}個\n新群組: ${pendingAIResult.newGroups.length}個\n建議移除: ${pendingAIResult.removeSuggestions.length}個`);
+          setPendingAIResult(null);
+        },
+        onReject: () => {
+          setAiResult('已取消智能整理');
+          setPendingAIResult(null);
+        },
+        onRegenerate: () => {
+          handleAISmartOrganize(true);
+        }
+      });
+      
+      setShowAIPreview(true);
+      if (!isRegenerate) {
+        setAiResult('🎯 智能整理分析完成！請查看預覽。');
+      }
+    } catch (error) {
+      console.error('AI Smart Organize error:', error);
+      setAiResult('❌ AI 智能整理功能暫時無法使用。');
     }
   };
 
   // 清除畫布功能
+
   const handleClearCanvas = useCallback(() => {
     if (whiteboardData.notes.length === 0 && whiteboardData.edges.length === 0) {
       return;
@@ -1262,7 +2468,7 @@ const Whiteboard: React.FC = () => {
 
     const confirmClear = window.confirm('確定要清除所有便利貼和連線嗎？此操作無法復原。');
     if (confirmClear) {
-      setWhiteboardData({ notes: [], edges: [] });
+      setWhiteboardData({ notes: [], edges: [], groups: [] });
       setAiResult('');
       setSelectedNote(null);
       setConnectingFrom(null);
@@ -1272,9 +2478,10 @@ const Whiteboard: React.FC = () => {
   }, [whiteboardData]);
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className={`flex h-screen ${isDarkMode ? 'bg-dark-bg' : 'bg-white'}`}>
       {/* 白板畫布 */}
       <div 
+        id="whiteboard-canvas"
         ref={canvasRef}
         data-canvas-background
         className={`flex-1 relative overflow-hidden transition-all select-none ${
@@ -1290,16 +2497,13 @@ const Whiteboard: React.FC = () => {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
-          background: 'white',
-          backgroundImage: 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)',
-          backgroundSize: '20px 20px',
-          backgroundPosition: '0 0'
+          backgroundColor: isDarkMode ? '#1e1e1e' : 'white'
         }}
       >
         {/* 畫布使用提示 */}
         {whiteboardData.notes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="text-center text-gray-400 select-none">
+            <div className={`text-center select-none ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
               <div className="text-6xl mb-4">🧠</div>
               <div className="text-lg font-medium mb-2">歡迎使用 AI 白板</div>
               <div className="text-sm space-y-1">
@@ -1326,6 +2530,25 @@ const Whiteboard: React.FC = () => {
             transformOrigin: '0 0'
           }}
         >
+          {/* 背景點點層 - 與內容同步移動 */}
+          <div 
+            className="absolute z-0"
+            style={{
+              top: 0,
+              left: 0,
+              width: '2000vw',
+              height: '2000vh',
+              minWidth: '20000px',
+              minHeight: '20000px',
+              backgroundImage: isDarkMode 
+                ? 'radial-gradient(circle, #333333 1px, transparent 1px)'
+                : 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)',
+              backgroundSize: '20px 20px',
+              backgroundPosition: '0 0',
+              pointerEvents: 'none'
+            }}
+          />
+          
           {/* SVG 用於繪製連線 */}
           <svg 
             className="absolute z-10"
@@ -1477,10 +2700,10 @@ const Whiteboard: React.FC = () => {
                 y={Math.min(selectionStart.y, selectionEnd.y)}
                 width={Math.abs(selectionEnd.x - selectionStart.x)}
                 height={Math.abs(selectionEnd.y - selectionStart.y)}
-                fill="rgba(59, 130, 246, 0.1)"
-                stroke="rgb(59, 130, 246)"
-                strokeWidth="2"
-                strokeDasharray="5,5"
+                fill={isDarkMode ? "rgba(96, 165, 250, 0.15)" : "rgba(59, 130, 246, 0.1)"}
+                stroke={isDarkMode ? "rgb(96, 165, 250)" : "rgb(59, 130, 246)"}
+                strokeWidth={2 / zoomLevel}
+                strokeDasharray={`${5 / zoomLevel},${5 / zoomLevel}`}
                 style={{ pointerEvents: 'none' }}
               />
             )}
@@ -1497,14 +2720,47 @@ const Whiteboard: React.FC = () => {
                   width={bounds.width}
                   height={bounds.height}
                   fill="none"
-                  stroke="rgb(59, 130, 246)"
-                  strokeWidth="2"
-                  strokeDasharray="8,4"
+                  stroke={isDarkMode ? "rgb(96, 165, 250)" : "rgb(59, 130, 246)"}
+                  strokeWidth={2 / zoomLevel}
+                  strokeDasharray={`${8 / zoomLevel},${4 / zoomLevel}`}
                   rx="12"
                   style={{ pointerEvents: 'none' }}
                 />
               );
             })()}
+            
+            {/* 對齊輔助線 - 只在按住 Cmd 時顯示 */}
+            {isHoldingCmd && alignmentGuides.map((guide, index) => {
+              if (guide.type === 'horizontal') {
+                // 水平輔助線
+                return (
+                  <line
+                    key={`h-${index}`}
+                    x1={guide.start}
+                    y1={guide.position}
+                    x2={guide.end}
+                    y2={guide.position}
+                    stroke={isDarkMode ? '#60A5FA' : '#3B82F6'}
+                    strokeWidth={1 / zoomLevel}
+                    opacity="0.6"
+                  />
+                );
+              } else {
+                // 垂直輔助線
+                return (
+                  <line
+                    key={`v-${index}`}
+                    x1={guide.position}
+                    y1={guide.start}
+                    x2={guide.position}
+                    y2={guide.end}
+                    stroke={isDarkMode ? '#60A5FA' : '#3B82F6'}
+                    strokeWidth={1 / zoomLevel}
+                    opacity="0.6"
+                  />
+                );
+              }
+            })}
           </svg>
 
           {/* 便利貼 */}
@@ -1548,7 +2804,9 @@ const Whiteboard: React.FC = () => {
               }}
               onDelete={() => deleteStickyNote(note.id)}
               onAIBrainstorm={() => handleAIBrainstorm(note.id)}
+              onAskAI={() => handleAskAI(note.id)}
               onStartConnection={() => handleStartConnection(note.id)}
+              isAILoading={aiLoadingStates.brainstorm && aiLoadingStates.targetNoteId === note.id}
               onBatchColorChange={handleBatchColorChange}
               onBatchCopy={handleBatchCopy}
               onBatchMove={handleBatchMove}
@@ -1571,56 +2829,172 @@ const Whiteboard: React.FC = () => {
               onMouseLeave={() => {
                 setHoveredNote(null);
               }}
+              onDragStart={() => {
+                setIsDraggingNote(true);
+              }}
+              onDragEnd={() => {
+                setIsDraggingNote(false);
+                setAlignmentGuides([]);
+              }}
             />
           ))}
         </div>
 
         {/* 儲存狀態指示器 - 固定在畫面上方 */}
         {lastSaveTime && (
-          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-white px-3 py-1 rounded-full shadow-md text-xs text-gray-600 z-30">
+          <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 px-3 py-1 rounded-full shadow-md text-xs z-30 ${
+            isDarkMode ? 'bg-dark-bg-secondary text-gray-400' : 'bg-white text-gray-600'
+          }`}>
             <span className="text-green-600">✓</span> 自動儲存於 {lastSaveTime.toLocaleTimeString()}
           </div>
         )}
 
-        {/* 縮放控制器 - 固定在右側面板左側 */}
-        <div 
-          className="fixed bottom-4 flex flex-col bg-white rounded-lg shadow-lg border border-gray-200 z-30"
-          style={{ right: '336px' }} // 320px (面板寬度) + 16px (間距)
+      </div>
+
+      {/* 左下角控制按鈕 */}
+      <div className="absolute bottom-8 left-8 flex flex-col gap-2">
+        {/* 回到內容中心按鈕 */}
+        <button
+          onClick={centerViewOnContent}
+          className={`rounded-full p-3 shadow-lg hover:shadow-xl transition-all group ${
+            isDarkMode ? 'bg-dark-bg-secondary hover:bg-dark-bg-tertiary' : 'bg-white hover:bg-gray-50'
+          }`}
+          title="回到內容中心 (Home)"
         >
-          <button
-            onClick={zoomIn}
-            className="px-3 py-2 text-lg font-bold hover:bg-gray-100 transition-colors border-b border-gray-100"
-            title="放大 (Ctrl + 滾輪向上)"
-            disabled={zoomLevel >= MAX_ZOOM}
+          <svg 
+            className={`w-5 h-5 transition-colors ${
+              isDarkMode 
+                ? 'text-gray-400 group-hover:text-blue-400' 
+                : 'text-gray-600 group-hover:text-blue-600'
+            }`} 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
           >
-            +
-          </button>
-          
-          <div className="px-2 py-1 text-xs text-center text-gray-600 border-b border-gray-100 min-w-16">
-            {Math.round(zoomLevel * 100)}%
-          </div>
-          
-          <button
-            onClick={zoomOut}
-            className="px-3 py-2 text-lg font-bold hover:bg-gray-100 transition-colors border-b border-gray-100"
-            title="縮小 (Ctrl + 滾輪向下)"
-            disabled={zoomLevel <= MIN_ZOOM}
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" 
+            />
+          </svg>
+        </button>
+        
+        {/* 重置視圖按鈕 */}
+        <button
+          onClick={() => {
+            setZoomLevel(1);
+            setPanOffset({ x: 0, y: 0 });
+          }}
+          className={`rounded-full p-3 shadow-lg hover:shadow-xl transition-all group ${
+            isDarkMode ? 'bg-dark-bg-secondary hover:bg-dark-bg-tertiary' : 'bg-white hover:bg-gray-50'
+          }`}
+          title="重置視圖 (Reset)"
+        >
+          <svg 
+            className="w-5 h-5 text-gray-600 group-hover:text-gray-800 transition-colors" 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
           >
-            -
-          </button>
-          
-          <button
-            onClick={resetZoom}
-            className="px-2 py-1 text-xs hover:bg-gray-100 transition-colors"
-            title="重置縮放"
-          >
-            重置
-          </button>
-        </div>
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+            />
+          </svg>
+        </button>
       </div>
 
       {/* 右側面板 */}
-      <SidePanel aiResult={aiResult} />
+      <SidePanel 
+        aiResult={aiResult}
+        currentProject={currentProject}
+        syncStatus={syncStatus}
+        aiLoadingStates={aiLoadingStates}
+        onProjectClick={() => setShowProjectDialog(true)}
+        onProjectSelect={(projectId) => {
+          // 切換專案
+          ProjectService.setCurrentProject(projectId);
+          setCurrentProjectId(projectId);
+          
+          // 載入新專案資料
+          const projectData = ProjectService.loadProjectData(projectId);
+            
+          if (projectData) {
+            setWhiteboardData(projectData);
+            if (projectData.viewport) {
+              setZoomLevel(projectData.viewport.zoomLevel);
+              setPanOffset(projectData.viewport.panOffset);
+            } else {
+              // 重置縮放和平移
+              setZoomLevel(1);
+              setPanOffset({ x: 0, y: 0 });
+            }
+          } else {
+            // 如果沒有資料，初始化空白板
+            setWhiteboardData({ notes: [], edges: [], groups: [] });
+            // 重置縮放和平移
+            setZoomLevel(1);
+            setPanOffset({ x: 0, y: 0 });
+          }
+          
+          // 更新當前專案資訊
+          const projects = ProjectService.getAllProjects();
+          const project = projects.find(p => p.id === projectId);
+          setCurrentProject(project || null);
+          
+          // 重置歷史記錄
+          setHistory([projectData || { notes: [], edges: [], groups: [] }]);
+          setHistoryIndex(0);
+        }}
+        onProjectCreate={(name, description) => {
+          // 創建新專案並切換到它
+          const newProject = ProjectService.createProject(name, description);
+          ProjectService.setCurrentProject(newProject.id);
+          setCurrentProjectId(newProject.id);
+          setCurrentProject(newProject);
+          
+          // 初始化空白板
+          setWhiteboardData({ notes: [], edges: [], groups: [] });
+          setZoomLevel(1);
+          setPanOffset({ x: 0, y: 0 });
+          
+          // 初始化歷史記錄
+          setHistory([{ notes: [], edges: [], groups: [] }]);
+          setHistoryIndex(0);
+        }}
+        onProjectDelete={(projectId) => {
+          // 刪除專案
+          ProjectService.deleteProject(projectId);
+          
+          // 如果刪除的是當前專案，切換到第一個專案
+          if (projectId === currentProjectId) {
+            const projects = ProjectService.getAllProjects();
+            if (projects.length > 0) {
+              const firstProject = projects[0];
+              setCurrentProjectId(firstProject.id);
+              setCurrentProject(firstProject);
+              
+              const projectData = ProjectService.loadProjectData(firstProject.id);
+              if (projectData) {
+                setWhiteboardData(projectData);
+              } else {
+                setWhiteboardData({ notes: [], edges: [], groups: [] });
+              }
+            } else {
+              // 沒有專案了，創建預設專案
+              const defaultProject = ProjectService.createProject('我的白板', '預設專案');
+              setCurrentProjectId(defaultProject.id);
+              setCurrentProject(defaultProject);
+              setWhiteboardData({ notes: [], edges: [], groups: [] });
+            }
+          }
+        }}
+        cloudSyncEnabled={cloudSyncEnabled}
+        onToggleCloudSync={handleToggleCloudSync}
+      />
 
       {/* 底部懸浮工具列 */}
       <FloatingToolbar
@@ -1632,22 +3006,239 @@ const Whiteboard: React.FC = () => {
         canUndo={historyIndex > 0}
         canRedo={historyIndex < history.length - 1}
         selectedCount={selectedNotes.length}
-        onExport={(format) => {
-          // TODO: 實現匯出功能
-          console.log('Export as:', format);
+        aiLoadingStates={aiLoadingStates}
+        onExport={async (format) => {
+          try {
+            if (format === 'json') {
+              const { exportWhiteboard } = await import('../services/exportService');
+              await exportWhiteboard.asJSON(whiteboardData);
+              setAiResult('✅ 已成功匯出為 JSON 檔案');
+            } else if (format === 'png') {
+              const { exportWhiteboard } = await import('../services/exportService');
+              await exportWhiteboard.asPNG('whiteboard-canvas');
+              setAiResult('✅ 已成功匯出為 PNG 圖片');
+            } else if (format === 'pdf') {
+              const { exportWhiteboard } = await import('../services/exportService');
+              await exportWhiteboard.asPDF('whiteboard-canvas');
+              setAiResult('✅ 已成功匯出為 PDF 檔案');
+            }
+          } catch (error) {
+            console.error('匯出失敗:', error);
+            setAiResult('❌ 匯出失敗，請稍後再試');
+          }
         }}
         onSearch={() => {
           // TODO: 實現搜尋功能
           console.log('Search');
         }}
         onTemplate={() => {
-          // TODO: 實現範本功能
-          console.log('Templates');
+          setShowTemplates(true);
         }}
         onNotes={() => {
-          // TODO: 實現備忘錄功能
-          console.log('Notes');
+          setShowNotes(true);
         }}
+        onAIAnalyzeSelection={handleAIAnalyzeSelection}
+        onAISuggestImprovements={handleAISuggestImprovements}
+        onAIRestructure={handleAIRestructure}
+        onAISWOT={handleAISWOT}
+        onAIMindMap={handleAIMindMap}
+        onAICriticalPath={handleAICriticalPath}
+        onAIAutoGroup={handleAIAutoGroup}
+        onAIAutoGenerate={handleAIAutoGenerate}
+        onAIAutoConnect={handleAIAutoConnect}
+        onAISmartOrganize={handleAISmartOrganize}
+        onAIAskSelection={handleAIAskSelection}
+        onAIConvergeNodes={handleAIConvergeNodes}
+      />
+
+      {/* 筆記面板 */}
+      <Notes 
+        isOpen={showNotes}
+        onClose={() => setShowNotes(false)}
+      />
+      
+      {/* 範本面板 */}
+      <Templates
+        isOpen={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        onApplyTemplate={(template) => {
+          saveToHistory(whiteboardData);
+          
+          // 為範本中的每個元素生成新的 ID
+          const idMap = new Map<string, string>();
+          
+          // 生成新的便利貼
+          const newNotes = template.data.notes.map(noteData => {
+            const newId = uuidv4();
+            idMap.set(noteData.id || '', newId);
+            return {
+              id: newId,
+              content: noteData.content || '',
+              x: noteData.x || 0,
+              y: noteData.y || 0,
+              width: noteData.width || 150,
+              height: noteData.height || 100,
+              color: noteData.color || '#FEF3C7',
+              groupId: null
+            } as StickyNote;
+          });
+          
+          // 生成新的連線（更新 ID 引用）
+          const newEdges = template.data.edges.map(edgeData => ({
+            id: uuidv4(),
+            from: idMap.get(edgeData.from || '') || edgeData.from || '',
+            to: idMap.get(edgeData.to || '') || edgeData.to || ''
+          } as Edge));
+          
+          // 生成新的群組
+          const newGroups = template.data.groups?.map(groupData => {
+            const newGroupId = uuidv4();
+            const newGroup: Group = {
+              id: newGroupId,
+              name: groupData.name || '未命名群組',
+              noteIds: [],
+              x: groupData.x || 0,
+              y: groupData.y || 0,
+              width: groupData.width || 200,
+              height: groupData.height || 200,
+              color: groupData.color || '#F3F4F6'
+            };
+            
+            // 將在群組範圍內的便利貼加入群組
+            newNotes.forEach(note => {
+              if (note.x >= newGroup.x && 
+                  note.x + note.width <= newGroup.x + newGroup.width &&
+                  note.y >= newGroup.y && 
+                  note.y + note.height <= newGroup.y + newGroup.height) {
+                newGroup.noteIds.push(note.id);
+                note.groupId = newGroupId;
+              }
+            });
+            
+            return newGroup;
+          }) || [];
+          
+          // 套用範本
+          updateWhiteboardData({
+            notes: [...whiteboardData.notes, ...newNotes],
+            edges: [...whiteboardData.edges, ...newEdges],
+            groups: [...(whiteboardData.groups || []), ...newGroups]
+          });
+          
+          setAiResult(`✅ 已成功套用範本「${template.name}」`);
+        }}
+      />
+      
+      {/* 專案選擇對話框 */}
+      <ProjectDialog
+        isOpen={showProjectDialog}
+        onClose={() => setShowProjectDialog(false)}
+        onSelectProject={async (projectId) => {
+          // 切換專案
+          ProjectService.setCurrentProject(projectId);
+          setCurrentProjectId(projectId);
+          
+          // 載入新專案資料
+          const projectData = ProjectService.loadProjectData(projectId);
+            
+          if (projectData) {
+            setWhiteboardData(projectData);
+            if (projectData.viewport) {
+              setZoomLevel(projectData.viewport.zoomLevel);
+              setPanOffset(projectData.viewport.panOffset);
+            }
+            // 重置歷史記錄
+            setHistory([projectData]);
+            setHistoryIndex(0);
+          }
+          
+          // 更新當前專案資訊
+          const projects = ProjectService.getAllProjects();
+          const project = projects.find(p => p.id === projectId);
+          setCurrentProject(project || null);
+          
+          setShowProjectDialog(false);
+          setAiResult(`✅ 已切換到專案：${project?.name || '未知專案'}`);
+        }}
+        currentProjectId={currentProjectId}
+      />
+      
+      {/* 自訂 AI 詢問對話框 */}
+      {showAskAIDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+          <div className={`rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 ${
+            isDarkMode ? 'bg-dark-bg-secondary' : 'bg-white'
+          }`}>
+            <h3 className={`text-lg font-semibold mb-4 ${
+              isDarkMode ? 'text-dark-text' : 'text-gray-800'
+            }`}>
+              💬 詢問 AI
+            </h3>
+            
+            <p className={`text-sm mb-4 ${
+              isDarkMode ? 'text-dark-text-secondary' : 'text-gray-600'
+            }`}>
+              {askAINoteId && askAINoteId.includes(',') 
+                ? `輸入您的問題，AI 將基於選定的 ${askAINoteId.split(',').length} 個便利貼內容來回答。`
+                : '輸入您的問題，AI 將基於目前的便利貼內容和相關脈絡來回答。'
+              }
+            </p>
+            
+            <textarea
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value)}
+              placeholder="例如：這個概念如何應用在實際專案中？"
+              className={`w-full h-32 p-3 rounded-lg border resize-none ${
+                isDarkMode 
+                  ? 'bg-dark-bg border-gray-600 text-dark-text' 
+                  : 'bg-gray-50 border-gray-300 text-gray-800'
+              }`}
+              autoFocus
+            />
+            
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={handleSubmitAskAI}
+                disabled={!customPrompt.trim()}
+                className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+                  customPrompt.trim()
+                    ? isDarkMode
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                    : isDarkMode
+                      ? 'bg-dark-bg-tertiary text-dark-text-secondary cursor-not-allowed'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                送出
+              </button>
+              <button
+                onClick={() => {
+                  setShowAskAIDialog(false);
+                  setAskAINoteId(null);
+                  setCustomPrompt('');
+                }}
+                className={`py-2 px-4 rounded-lg font-medium transition-colors ${
+                  isDarkMode
+                    ? 'bg-dark-bg-tertiary text-dark-text hover:bg-dark-bg-hover'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI 預覽對話框 */}
+      <AIPreviewDialog
+        isOpen={showAIPreview}
+        onClose={() => {
+          setShowAIPreview(false);
+          setAIPreviewData(null);
+        }}
+        previewData={aiPreviewData}
       />
     </div>
   );

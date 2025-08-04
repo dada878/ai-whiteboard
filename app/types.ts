@@ -49,3 +49,16 @@ export interface NetworkAnalysis {
 }
 
 export type AIFeature = 'brainstorm' | 'analyze' | 'summarize';
+
+export interface Project {
+  id: string;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+  description?: string;
+  thumbnail?: string; // Base64 encoded preview image
+}
+
+export interface ProjectWithData extends Project {
+  whiteboardData: WhiteboardData;
+}
