@@ -1825,14 +1825,16 @@ const Whiteboard: React.FC = () => {
     
     // 解析不同格式的回答
     let currentSection = '';
-    let inList = false;
     
     for (const line of lines) {
       const trimmed = line.trim();
       
-      // 跳過表情符號開頭的標題
+      // 跳過表情符號開頭的標題（作為主節點）
       if (trimmed.match(/^[📝💡🎯✨🔍📊]/)) {
-        currentSection = trimmed;
+        const content = trimmed.replace(/^[📝💡🎯✨🔍📊]\s*/, '').substring(0, 30);
+        if (content.length > 3) {
+          nodes.push({ content, level: 0, isMain: true });
+        }
         continue;
       }
       
@@ -1855,12 +1857,25 @@ const Whiteboard: React.FC = () => {
         continue;
       }
       
-      // 檢測子彈列表 (- 或 • 或 *)
-      if (trimmed.match(/^[-•\*]\s+/)) {
-        const content = trimmed.replace(/^[-•\*]\s+/, '').substring(0, 30);
+      // 檢測不同層級的子彈列表
+      // 根據縮排判斷層級
+      let bulletLevel = 1;
+      let cleanedLine = trimmed;
+      
+      // 檢測縮排層級
+      const indentMatch = line.match(/^(\s*)/);
+      if (indentMatch) {
+        const indentLength = indentMatch[1].length;
+        if (indentLength >= 6) bulletLevel = 3;
+        else if (indentLength >= 3) bulletLevel = 2;
+        else if (indentLength > 0) bulletLevel = 1;
+      }
+      
+      // 檢測各種子彈符號
+      if (cleanedLine.match(/^[-•\*◦▪▫→]\s+/)) {
+        const content = cleanedLine.replace(/^[-•\*◦▪▫→]\s+/, '').substring(0, 30);
         if (content.length > 3) {
-          const level = trimmed.startsWith('  ') ? 2 : 1;
-          nodes.push({ content, level });
+          nodes.push({ content, level: bulletLevel });
         }
         continue;
       }
@@ -1891,7 +1906,7 @@ const Whiteboard: React.FC = () => {
     }
     
     // 限制節點數量，避免太多
-    return nodes.slice(0, 8);
+    return nodes.slice(0, 10);  // 增加到10個以支援更多層級
   };
 
   const handleSubmitAskAI = async () => {
@@ -1998,9 +2013,8 @@ const Whiteboard: React.FC = () => {
         const newNotes: StickyNote[] = [];
         const newEdges: Edge[] = [];
         
-        // 佈局參數
-        const NOTE_WIDTH = 180;
-        const NOTE_HEIGHT = 120;
+        // 佈局參數（使用正方形便利貼）
+        const NOTE_SIZE = 150;  // 統一的正方形尺寸
         const H_GAP = 50;
         const V_GAP = 80;
         
@@ -2021,8 +2035,8 @@ const Whiteboard: React.FC = () => {
           id: mainNodeId,
           x: targetX,
           y: targetY,
-          width: NOTE_WIDTH + 20,
-          height: NOTE_HEIGHT,
+          width: NOTE_SIZE + 20,  // 主節點稍大
+          height: NOTE_SIZE + 20,
           content: mainNode.content,
           color: '#E0E7FF' // 主節點用藍色系
         });
@@ -2055,8 +2069,8 @@ const Whiteboard: React.FC = () => {
               id: nodeId,
               x: targetX + Math.cos(angle) * radius,
               y: targetY + Math.sin(angle) * radius,
-              width: NOTE_WIDTH,
-              height: NOTE_HEIGHT,
+              width: NOTE_SIZE,
+              height: NOTE_SIZE,
               content: node.content,
               color: '#FCE7F3' // 子節點用粉色系
             });
@@ -2079,8 +2093,8 @@ const Whiteboard: React.FC = () => {
                 id: subNodeId,
                 x: targetX + Math.cos(subAngle) * subRadius,
                 y: targetY + Math.sin(subAngle) * subRadius,
-                width: NOTE_WIDTH - 20,
-                height: NOTE_HEIGHT - 20,
+                width: NOTE_SIZE - 20,  // 第二層稍小
+                height: NOTE_SIZE - 20,
                 content: relatedLevel2[0].content,
                 color: '#FEF3C7' // 第二層用黃色系
               });
