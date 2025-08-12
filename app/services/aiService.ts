@@ -168,54 +168,175 @@ export class AIService {
       
       console.log('  - Sibling Nodes:', siblingNodes);
       
-      // 判斷發想類型
-      if (childCount === 0 && parentCount > 0) {
-        brainstormType = '葉節點';
-        contextInfo = `這是「${parentNodes[0] || '上層概念'}」的具體實現`;
-      } else if (parentCount === 0 && childCount > 0) {
-        brainstormType = '根節點';
-        contextInfo = `這是最上層概念，下有：${childNodes.join('、')}`;
-      } else if (childCount > 0) {
-        brainstormType = '分支節點';
-        contextInfo = `上層：${parentNodes[0] || '無'}，已有子項：${childNodes.join('、')}`;
-      } else {
-        brainstormType = '獨立節點';
-        contextInfo = '這是獨立的概念節點';
-      }
+      // 建立更完整的層級結構
+      const buildFullTree = (): string => {
+        // 找到根節點（沒有父節點的節點）
+        const findRoot = (nodeId: string, visited: Set<string> = new Set()): string => {
+          if (visited.has(nodeId)) return nodeId;
+          visited.add(nodeId);
+          
+          const parentEdge = whiteboardData.edges.find(e => e.to === nodeId);
+          if (!parentEdge) return nodeId;
+          
+          return findRoot(parentEdge.from, visited);
+        };
+        
+        // 遞迴建立樹結構
+        const buildTreeFromNode = (
+          nodeId: string, 
+          indent: string = '', 
+          isLast: boolean = true,
+          visited: Set<string> = new Set(),
+          depth: number = 0,
+          maxDepth: number = 5
+        ): string => {
+          if (depth > maxDepth || visited.has(nodeId)) return '';
+          visited.add(nodeId);
+          
+          const node = whiteboardData.notes.find(n => n.id === nodeId);
+          if (!node) return '';
+          
+          // 建立當前節點的顯示
+          let result = '';
+          if (depth > 0) {
+            result += indent + (isLast ? '└─ ' : '├─ ');
+          }
+          
+          // 標記當前節點
+          result += node.content;
+          if (node.id === targetNote.id) {
+            result += ' ← 【當前節點】';
+          }
+          result += '\n';
+          
+          // 找出所有子節點
+          const childEdges = whiteboardData.edges.filter(e => e.from === nodeId);
+          const children = childEdges.map(e => e.to);
+          
+          // 遞迴處理子節點
+          children.forEach((childId, index) => {
+            const isLastChild = index === children.length - 1;
+            const newIndent = depth === 0 ? '' : indent + (isLast ? '    ' : '│   ');
+            result += buildTreeFromNode(
+              childId, 
+              newIndent, 
+              isLastChild, 
+              visited,
+              depth + 1,
+              maxDepth
+            );
+          });
+          
+          return result;
+        };
+        
+        // 從根節點開始建立完整樹
+        const rootId = findRoot(targetNote.id);
+        const rootNode = whiteboardData.notes.find(n => n.id === rootId);
+        
+        if (!rootNode) return `${targetNote.content} ← 【當前節點】\n`;
+        
+        // 建立完整的樹
+        const fullTree = buildTreeFromNode(rootId);
+        
+        // 如果樹太大，只顯示當前節點周圍的部分
+        const lines = fullTree.split('\n');
+        if (lines.length > 20) {
+          // 找到當前節點的位置
+          const currentIndex = lines.findIndex(line => line.includes('【當前節點】'));
+          if (currentIndex !== -1) {
+            // 顯示當前節點前後各5行
+            const start = Math.max(0, currentIndex - 5);
+            const end = Math.min(lines.length, currentIndex + 10);
+            const excerpt = lines.slice(start, end);
+            
+            if (start > 0) excerpt.unshift('... （省略上層）');
+            if (end < lines.length - 1) excerpt.push('... （省略更多）');
+            
+            return excerpt.join('\n');
+          }
+        }
+        
+        return fullTree;
+      };
       
-      // 如果有兄弟節點，加入平行概念
-      if (siblingNodes.length > 0) {
-        contextInfo += `\n平行概念：${siblingNodes.join('、')}`;
-      }
+      const treeStructure = buildFullTree();
+      console.log('\n📊 Tree Structure:');
+      console.log(treeStructure);
       
-      console.log('\n🎯 Node Type Analysis:');
-      console.log('  - Type:', brainstormType);
-      console.log('  - Context Info:', contextInfo);
+      // 不再用關鍵詞判斷，而是分析結構模式
+      const analyzeNodePattern = () => {
+        // 分析子節點的模式
+        let childrenPattern = 'none';
+        if (childCount > 0) {
+          // 檢查子節點是否都很短（可能是項目列表）
+          const avgChildLength = childNodes.reduce((sum, child) => sum + child.length, 0) / childCount;
+          const hasColons = childNodes.some(child => child.includes('：'));
+          
+          if (avgChildLength < 6 && !hasColons) {
+            childrenPattern = 'simple_items'; // 簡單項目列表
+          } else if (hasColons || avgChildLength > 10) {
+            childrenPattern = 'detailed'; // 詳細描述
+          } else {
+            childrenPattern = 'mixed';
+          }
+        }
+        
+        // 分析兄弟節點的模式
+        let siblingPattern = 'none';
+        if (siblingNodes.length > 0) {
+          const avgSiblingLength = siblingNodes.reduce((sum, sib) => sum + sib.length, 0) / siblingNodes.length;
+          siblingPattern = avgSiblingLength < 6 ? 'simple' : 'detailed';
+        }
+        
+        return { childrenPattern, siblingPattern };
+      };
+      
+      const { childrenPattern, siblingPattern } = analyzeNodePattern();
+      
+      console.log('\n🎯 Pattern Analysis:');
+      console.log('  - Children Pattern:', childrenPattern);
+      console.log('  - Sibling Pattern:', siblingPattern);
       
       onProgress?.('✨ 生成創意中...', 70);
       
-      // 優化的 prompt 設計
-      const systemPrompt = `你是專業的思維導圖發想專家。你會：
-1. 理解概念的層次關係和脈絡
-2. 生成高品質、有創意但實用的想法
-3. 確保新概念與現有結構協調一致
-4. 每個概念簡潔有力（3-8個字）`;
+      // 優化的 prompt 設計 - 讓 AI 自己判斷
+      const systemPrompt = `你是專業的思維導圖發想專家。
+
+核心能力：
+1. 分析樹狀結構，理解節點間的層級關係
+2. 根據平行節點的模式，保持一致性
+3. 智能判斷應該生成什麼類型的概念
+4. 每個概念簡潔有力（3-8個字）
+
+重要原則：
+- 觀察平行節點（兄弟節點）的風格和內容
+- 如果平行節點都是簡短名詞（如「教師」「學生」），生成類似的項目
+- 如果平行節點是詳細描述，則生成詳細概念
+- 保持同一抽象層次和風格一致性`;
       
-      const userPrompt = `目標節點：「${targetNote.content}」
-節點類型：${brainstormType}
-${contextInfo}
+      const userPrompt = `請分析以下思維導圖結構，為標記的節點生成延伸概念：
 
-任務：生成4-5個高品質的延伸概念
+【樹狀結構】
+${treeStructure}
 
-要求：
-- 如果是葉節點：著重實際應用、具體方法、執行細節
-- 如果是根節點：思考更高層次的分類、策略方向
-- 如果是分支節點：補充缺失的重要面向
-- 避免與現有概念重複
-- 保持同一抽象層次
-- 確保邏輯連貫性
+【模式分析】
+- 子節點模式：${childrenPattern === 'simple_items' ? '簡短項目列表' : 
+                childrenPattern === 'detailed' ? '詳細描述' : 
+                childrenPattern === 'mixed' ? '混合型' : '無子節點'}
+- 兄弟節點模式：${siblingPattern === 'simple' ? '簡短風格' : 
+                  siblingPattern === 'detailed' ? '詳細風格' : '無兄弟節點'}
 
-直接輸出概念（不要編號或解釋）：`;
+【任務】
+為「${targetNote.content}」生成4-5個延伸概念
+
+【要求】
+1. 先分析這個節點在樹中的角色（1句話）
+2. 根據平行節點的風格，生成一致的概念
+3. 如果有兄弟節點，參考它們的命名風格
+4. 如果有子節點，避免重複已有內容
+
+請分析後直接輸出概念：`;
       
       console.log('\n📝 === FINAL PROMPT ===');
       console.log('🤖 System Prompt:');
@@ -236,10 +357,10 @@ ${contextInfo}
             content: userPrompt
           }
         ],
-        max_tokens: 150,
-        temperature: 0.8,
-        presence_penalty: 0.3,
-        frequency_penalty: 0.2
+        max_tokens: 200,
+        temperature: 0.7,
+        presence_penalty: 0.5,
+        frequency_penalty: 0.3
       };
       
       console.log('🔧 API Parameters:');
@@ -273,23 +394,72 @@ ${contextInfo}
       console.log(result);
       console.log('🎉 === END RESPONSE ===\n');
       
-      // 解析回應
-      const lines = result.split('\n')
-        .map((line: string) => {
-          // 清理文字
-          let cleaned = line.trim();
-          // 移除編號
-          cleaned = cleaned.replace(/^\d+[\.\、\)]\s*/, '');
-          // 移除引號
-          cleaned = cleaned.replace(/^[「『"'"]|[」』"'"]$/g, '');
-          // 移除冒號後的解釋
-          if (cleaned.includes('：')) {
-            cleaned = cleaned.split('：')[0];
+      // 解析回應 - 更智能的解析
+      const allLines = result.split('\n').map(line => line.trim());
+      const parsedLines: string[] = [];
+      let foundConceptStart = false;
+      
+      for (let i = 0; i < allLines.length; i++) {
+        const line = allLines[i];
+        const lineLower = line.toLowerCase();
+        
+        // 跳過思考行和標題行
+        if (lineLower.includes('分析') || 
+            lineLower.includes('思考') || 
+            lineLower.includes('角色') ||
+            lineLower.includes('節點') ||
+            lineLower.includes('扮演') ||
+            lineLower.includes('需要') ||
+            lineLower.includes('應該') ||
+            lineLower.includes('可以') ||
+            lineLower.includes('延伸概念') ||
+            lineLower.includes('概念如下') ||
+            lineLower.includes('以下是') ||
+            line.includes('：') && i < 3) { // 前3行如果有冒號，可能是標題
+          foundConceptStart = true;
+          continue;
+        }
+        
+        // 如果還沒找到概念開始，且這行看起來像是概念（短且沒特殊符號）
+        if (!foundConceptStart && line.length > 20) {
+          continue;
+        }
+        
+        // 清理並處理概念行
+        let cleaned = line;
+        
+        // 移除編號
+        cleaned = cleaned.replace(/^\d+[\.\、\)]\s*/, '');
+        
+        // 移除列表符號
+        cleaned = cleaned.replace(/^[-*•·]\s*/, '');
+        
+        // 移除引號
+        cleaned = cleaned.replace(/^[「『"'"]|[」』"'"]$/g, '');
+        
+        // 如果有冒號，取冒號前的部分（但如果整行都很短，可能就是概念）
+        if (cleaned.includes('：') && cleaned.indexOf('：') < 10) {
+          const beforeColon = cleaned.split('：')[0];
+          if (beforeColon.length > 0) {
+            cleaned = beforeColon;
           }
-          return cleaned;
-        })
-        .filter((line: string) => line.length > 0 && line.length <= 15)
-        .slice(0, 5);
+        }
+        
+        // 過濾和驗證
+        if (cleaned.length > 0 && 
+            cleaned.length <= 15 && 
+            !cleaned.includes('例如') && 
+            !cleaned.includes('比如') &&
+            !cleaned.includes('等') &&
+            !cleaned.includes('概念')) {
+          parsedLines.push(cleaned);
+        }
+        
+        // 最多收集5個
+        if (parsedLines.length >= 5) break;
+      }
+      
+      const lines = parsedLines;
       
       console.log('📋 Parsed Results:', lines);
       console.log('📋 Total Valid Ideas:', lines.length);
@@ -1065,11 +1235,18 @@ ${mindMapStructure}
 3. 基於整體知識結構和當前節點的上下文，回答用戶的問題
 
 回答要求：
-- 直接、具體地回應問題
-- 考慮當前節點在整體知識結構中的位置和作用
-- 提供實用的見解、建議或延伸思考
-- 保持簡潔但有深度，避免泛泛而談
-- 如果問題涉及實際應用，請提供具體的例子或步驟`;
+- 使用結構化的方式回答（條列式、分點說明）
+- 每個要點簡潔有力（10-20字為佳）
+- 優先使用編號列表或子彈點
+- 如果有多個面向，分別說明
+- 避免長段落，改用多個短要點
+
+輸出格式示例：
+1. 核心觀點一
+2. 核心觀點二
+   - 細節說明A
+   - 細節說明B
+3. 核心觀點三`;
       
       const userMessage = `以下是完整的知識結構和上下文：
 
@@ -1542,11 +1719,26 @@ ${userPrompt}`;
           messages: [
             {
               role: 'system',
-              content: '你是一個智慧助理。基於用戶選定的概念和它們之間的關係，回答用戶的問題。保持回答簡潔、準確、有洞察力。使用表情符號讓回答更生動。'
+              content: `你是一個智慧助理。基於用戶選定的概念和它們之間的關係，回答用戶的問題。
+
+回答要求：
+- 使用結構化格式（編號列表、子彈點）
+- 每個要點簡潔（10-20字）
+- 分層次說明（主要點、子要點）
+- 避免長段落
+- 使用適當的表情符號標記重點
+
+格式範例：
+📝 主題概述
+1. 要點一
+2. 要點二
+   • 細節A
+   • 細節B
+3. 要點三`
             },
             {
               role: 'user',
-              content: `基於以下選定的概念和關係，回答問題：\n\n選定概念：\n${notesContent}\n\n概念關係：\n${connections || '無明確連接'}\n\n用戶問題：${userPrompt}\n\n請提供一個有洞察力的回答。`
+              content: `基於以下選定的概念和關係，回答問題：\n\n選定概念：\n${notesContent}\n\n概念關係：\n${connections || '無明確連接'}\n\n用戶問題：${userPrompt}\n\n請提供結構化的回答。`
             }
           ],
           temperature: 0.7,

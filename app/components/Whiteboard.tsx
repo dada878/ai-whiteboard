@@ -1814,6 +1814,86 @@ const Whiteboard: React.FC = () => {
     setCustomPrompt('');
   };
 
+  // 解析 AI 回答，生成結構化的便利貼
+  const parseAIResponseToTree = (response: string): Array<{
+    content: string;
+    level: number;
+    isMain?: boolean;
+  }> => {
+    const lines = response.split('\n').filter(line => line.trim());
+    const nodes: Array<{ content: string; level: number; isMain?: boolean }> = [];
+    
+    // 解析不同格式的回答
+    let currentSection = '';
+    let inList = false;
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      // 跳過表情符號開頭的標題
+      if (trimmed.match(/^[📝💡🎯✨🔍📊]/)) {
+        currentSection = trimmed;
+        continue;
+      }
+      
+      // 檢測主要觀點（通常是粗體或有特殊標記）
+      if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+        const content = trimmed.replace(/\*\*/g, '').substring(0, 30);
+        if (content.length > 3) {
+          nodes.push({ content, level: 0, isMain: true });
+        }
+        continue;
+      }
+      
+      // 檢測編號列表 (1. 2. 3. 或 1) 2) 3))
+      const numberedMatch = trimmed.match(/^(\d+)[\.\)]\s*(.+)/);
+      if (numberedMatch) {
+        const content = numberedMatch[2].substring(0, 30);
+        if (content.length > 3) {
+          nodes.push({ content, level: 1 });
+        }
+        continue;
+      }
+      
+      // 檢測子彈列表 (- 或 • 或 *)
+      if (trimmed.match(/^[-•\*]\s+/)) {
+        const content = trimmed.replace(/^[-•\*]\s+/, '').substring(0, 30);
+        if (content.length > 3) {
+          const level = trimmed.startsWith('  ') ? 2 : 1;
+          nodes.push({ content, level });
+        }
+        continue;
+      }
+      
+      // 檢測冒號分隔的要點
+      if (trimmed.includes('：') && trimmed.indexOf('：') < 15) {
+        const [key, value] = trimmed.split('：');
+        if (key.length <= 15) {
+          nodes.push({ content: key.trim(), level: 1 });
+          if (value && value.trim().length > 3 && value.trim().length <= 30) {
+            nodes.push({ content: value.trim(), level: 2 });
+          }
+        }
+        continue;
+      }
+      
+      // 如果是較短的獨立句子，可能是要點
+      if (trimmed.length > 5 && trimmed.length <= 30 && !trimmed.includes('。')) {
+        nodes.push({ content: trimmed, level: 1 });
+      }
+    }
+    
+    // 如果沒有解析出結構，至少返回一個總結節點
+    if (nodes.length === 0) {
+      // 提取前100個字作為總結
+      const summary = response.substring(0, 100).replace(/\n/g, ' ');
+      nodes.push({ content: summary, level: 0, isMain: true });
+    }
+    
+    // 限制節點數量，避免太多
+    return nodes.slice(0, 8);
+  };
+
   const handleSubmitAskAI = async () => {
     if (!askAINoteId || !customPrompt.trim()) return;
     
@@ -1887,35 +1967,144 @@ const Whiteboard: React.FC = () => {
         );
       }
       
-      // 創建一個新的便利貼來顯示結果
-      // 根據內容長度動態調整高度
-      const contentLength = result.length;
-      const estimatedHeight = Math.max(250, Math.min(400, 200 + Math.floor(contentLength / 50) * 20));
+      // 解析 AI 回答為結構化節點
+      const parsedNodes = parseAIResponseToTree(result);
       
-      const newNote = {
-        id: uuidv4(),
-        x: targetX,
-        y: targetY,
-        width: 250,
-        height: estimatedHeight,
-        content: result,
-        color: '#EDE9FE' // 紫色表示 AI 回答
-      };
-      
-      // 創建連線（如果是多選，連到所有選中的便利貼）
-      const newEdges = sourceNoteIds.map(sourceId => ({
-        id: uuidv4(),
-        from: sourceId,
-        to: newNote.id
-      }));
+      // 如果沒有解析出節點，使用原始方式
+      if (parsedNodes.length === 0) {
+        const newNote = {
+          id: uuidv4(),
+          x: targetX,
+          y: targetY,
+          width: 250,
+          height: 300,
+          content: result.substring(0, 200),
+          color: '#EDE9FE'
+        };
+        
+        const newEdges = sourceNoteIds.map(sourceId => ({
+          id: uuidv4(),
+          from: sourceId,
+          to: newNote.id
+        }));
 
-      setWhiteboardData(prev => ({
-        notes: [...prev.notes, newNote],
-        edges: [...prev.edges, ...newEdges],
-        groups: prev.groups || []
-      }));
+        setWhiteboardData(prev => ({
+          notes: [...prev.notes, newNote],
+          edges: [...prev.edges, ...newEdges],
+          groups: prev.groups || []
+        }));
+      } else {
+        // 生成樹狀結構的便利貼
+        const newNotes: StickyNote[] = [];
+        const newEdges: Edge[] = [];
+        
+        // 佈局參數
+        const NOTE_WIDTH = 180;
+        const NOTE_HEIGHT = 120;
+        const H_GAP = 50;
+        const V_GAP = 80;
+        
+        // 根據層級分組
+        const levels = new Map<number, typeof parsedNodes>();
+        parsedNodes.forEach(node => {
+          if (!levels.has(node.level)) {
+            levels.set(node.level, []);
+          }
+          levels.get(node.level)!.push(node);
+        });
+        
+        // 創建主節點（連接到源便利貼）
+        const mainNodeId = uuidv4();
+        const mainNode = parsedNodes.find(n => n.isMain) || parsedNodes[0];
+        
+        newNotes.push({
+          id: mainNodeId,
+          x: targetX,
+          y: targetY,
+          width: NOTE_WIDTH + 20,
+          height: NOTE_HEIGHT,
+          content: mainNode.content,
+          color: '#E0E7FF' // 主節點用藍色系
+        });
+        
+        // 連接源節點到主節點
+        sourceNoteIds.forEach(sourceId => {
+          newEdges.push({
+            id: uuidv4(),
+            from: sourceId,
+            to: mainNodeId
+          });
+        });
+        
+        // 創建子節點
+        const level1Nodes = parsedNodes.filter(n => n.level === 1 && n !== mainNode);
+        const level2Nodes = parsedNodes.filter(n => n.level === 2);
+        
+        // 佈局第一層節點（扇形展開）
+        if (level1Nodes.length > 0) {
+          const angleSpread = Math.min(Math.PI * 2/3, (Math.PI / 4) * level1Nodes.length);
+          const startAngle = Math.PI / 2 - angleSpread / 2; // 向下為主
+          const angleStep = level1Nodes.length > 1 ? angleSpread / (level1Nodes.length - 1) : 0;
+          
+          level1Nodes.forEach((node, index) => {
+            const nodeId = uuidv4();
+            const angle = startAngle + angleStep * index;
+            const radius = 200;
+            
+            newNotes.push({
+              id: nodeId,
+              x: targetX + Math.cos(angle) * radius,
+              y: targetY + Math.sin(angle) * radius,
+              width: NOTE_WIDTH,
+              height: NOTE_HEIGHT,
+              content: node.content,
+              color: '#FCE7F3' // 子節點用粉色系
+            });
+            
+            // 連接主節點到子節點
+            newEdges.push({
+              id: uuidv4(),
+              from: mainNodeId,
+              to: nodeId
+            });
+            
+            // 如果有第二層節點，連接到對應的第一層節點
+            const relatedLevel2 = level2Nodes.splice(0, 1); // 取一個第二層節點
+            if (relatedLevel2.length > 0) {
+              const subNodeId = uuidv4();
+              const subAngle = angle + (Math.random() - 0.5) * 0.3; // 稍微偏移
+              const subRadius = 350;
+              
+              newNotes.push({
+                id: subNodeId,
+                x: targetX + Math.cos(subAngle) * subRadius,
+                y: targetY + Math.sin(subAngle) * subRadius,
+                width: NOTE_WIDTH - 20,
+                height: NOTE_HEIGHT - 20,
+                content: relatedLevel2[0].content,
+                color: '#FEF3C7' // 第二層用黃色系
+              });
+              
+              newEdges.push({
+                id: uuidv4(),
+                from: nodeId,
+                to: subNodeId
+              });
+            }
+          });
+        }
+        
+        // 批量更新
+        setWhiteboardData(prev => ({
+          notes: [...prev.notes, ...newNotes],
+          edges: [...prev.edges, ...newEdges],
+          groups: prev.groups || []
+        }));
+      }
       
-      const successMessage = isMultiSelect
+      const successMessage = parsedNodes.length > 0
+        ? `💬 AI 回答完成！\n\n已將回答解析為 ${parsedNodes.length} 個結構化便利貼。`
+        : isMultiSelect
         ? `💬 AI 回答完成！\n\n基於 ${sourceNoteIds.length} 個選中便利貼的詢問：\n"${customPrompt}"\n\n已創建新的便利貼顯示回答。`
         : `💬 AI 回答完成！\n\n基於便利貼的詢問：\n"${customPrompt}"\n\n已創建新的便利貼顯示回答。`;
       
