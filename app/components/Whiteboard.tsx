@@ -1823,16 +1823,24 @@ const Whiteboard: React.FC = () => {
     const lines = response.split('\n').filter(line => line.trim());
     const nodes: Array<{ content: string; level: number; isMain?: boolean }> = [];
     
+    console.log('=== Parse AI Response Tree Debug ===');
+    console.log('Total lines to parse:', lines.length);
+    
     // 解析不同格式的回答
     let currentSection = '';
     
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       const trimmed = line.trim();
+      
+      console.log(`Line ${i}: "${line}" (trimmed: "${trimmed}")`);
+      console.log(`  - Starts with spaces:`, line.match(/^(\s*)/)?.[1].length || 0);
       
       // 跳過表情符號開頭的標題（作為主節點）
       if (trimmed.match(/^[📝💡🎯✨🔍📊]/)) {
         const content = trimmed.replace(/^[📝💡🎯✨🔍📊]\s*/, '').substring(0, 30);
         if (content.length > 3) {
+          console.log(`  → Detected emoji title, level 0: "${content}"`);
           nodes.push({ content, level: 0, isMain: true });
         }
         continue;
@@ -1852,6 +1860,7 @@ const Whiteboard: React.FC = () => {
       if (numberedMatch) {
         const content = numberedMatch[2].substring(0, 30);
         if (content.length > 3) {
+          console.log(`  → Detected numbered list, level 1: "${content}"`);
           nodes.push({ content, level: 1 });
         }
         continue;
@@ -1875,6 +1884,7 @@ const Whiteboard: React.FC = () => {
       if (cleanedLine.match(/^[-•\*◦▪▫→]\s+/)) {
         const content = cleanedLine.replace(/^[-•\*◦▪▫→]\s+/, '').substring(0, 30);
         if (content.length > 3) {
+          console.log(`  → Detected bullet list, level ${bulletLevel}: "${content}"`);
           nodes.push({ content, level: bulletLevel });
         }
         continue;
@@ -1906,7 +1916,16 @@ const Whiteboard: React.FC = () => {
     }
     
     // 限制節點數量，避免太多
-    return nodes.slice(0, 10);  // 增加到10個以支援更多層級
+    const finalNodes = nodes.slice(0, 10);  // 增加到10個以支援更多層級
+    
+    console.log('=== Parse Result Summary ===');
+    console.log('Total nodes parsed:', finalNodes.length);
+    finalNodes.forEach((node, i) => {
+      console.log(`Node ${i}: Level ${node.level}, isMain: ${node.isMain}, content: "${node.content}"`);
+    });
+    console.log('=== End Parse Debug ===');
+    
+    return finalNodes;
   };
 
   const handleSubmitAskAI = async () => {
@@ -1982,8 +2001,20 @@ const Whiteboard: React.FC = () => {
         );
       }
       
+      // Debug: 記錄 AI 原始回答
+      console.log('=== AI Ask Response Debug ===');
+      console.log('Raw AI Response:');
+      console.log(result);
+      console.log('Response Length:', result.length);
+      console.log('Response Lines:', result.split('\n').length);
+      
       // 解析 AI 回答為結構化節點
       const parsedNodes = parseAIResponseToTree(result);
+      
+      console.log('Parsed Nodes:');
+      console.log(parsedNodes);
+      console.log('Total Parsed Nodes:', parsedNodes.length);
+      console.log('=== End AI Ask Response Debug ===');
       
       // 如果沒有解析出節點，使用原始方式
       if (parsedNodes.length === 0) {
