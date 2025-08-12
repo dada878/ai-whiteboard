@@ -20,6 +20,36 @@ export class AIService {
     }
 
     try {
+      console.log('\n=== 🎯 Simple Brainstorm Debug ===');
+      console.log('📍 Target:', content);
+      
+      const systemPrompt = `你是專業的創意發想專家，擅長產生高品質、實用的想法。
+
+核心能力：
+- 深入理解概念本質
+- 產生創新但可執行的想法
+- 平衡創意與實用性
+- 確保概念的多樣性
+
+輸出規範：
+- 4-5個概念，每個3-8字
+- 涵蓋不同面向
+- 避免重複或相似概念`;
+
+      const userPrompt = `為「${content}」生成高品質延伸概念。
+
+思考方向：
+- 核心功能/特性
+- 實際應用場景
+- 關鍵技術/方法
+- 創新可能性
+- 相關領域連結
+
+直接輸出（不要編號）：`;
+
+      console.log('📝 System Prompt:', systemPrompt);
+      console.log('📝 User Prompt:', userPrompt);
+      
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -31,31 +61,11 @@ export class AIService {
           messages: [
             {
               role: 'system',
-              content: `你是專業的創意發想專家，擅長產生高品質、實用的想法。
-
-核心能力：
-- 深入理解概念本質
-- 產生創新但可執行的想法
-- 平衡創意與實用性
-- 確保概念的多樣性
-
-輸出規範：
-- 4-5個概念，每個3-8字
-- 涵蓋不同面向
-- 避免重複或相似概念`
+              content: systemPrompt
             },
             {
               role: 'user',
-              content: `為「${content}」生成高品質延伸概念。
-
-思考方向：
-- 核心功能/特性
-- 實際應用場景
-- 關鍵技術/方法
-- 創新可能性
-- 相關領域連結
-
-直接輸出（不要編號）：`
+              content: userPrompt
             }
           ],
           max_tokens: 150,
@@ -65,10 +75,11 @@ export class AIService {
       });
 
       const data = await response.json();
+      console.log('✅ Response:', data.choices?.[0]?.message?.content);
       const result = data.choices[0].message.content;
       
       // 解析回應並過濾
-      return result.split('\n')
+      const lines = result.split('\n')
         .map((line: string) => {
           let cleaned = line.trim();
           // 移除編號
@@ -83,6 +94,11 @@ export class AIService {
         })
         .filter((line: string) => line.length > 0 && line.length <= 15)
         .slice(0, 5);
+      
+      console.log('📋 Parsed Results:', lines);
+      console.log('=== 🏁 Simple Brainstorm End ===\n');
+      
+      return lines;
     } catch (error) {
       console.error('AI brainstorm error:', error);
       return [`${content}發想`];
@@ -108,12 +124,18 @@ export class AIService {
 
     try {
       onProgress?.('💡 分析脈絡...', 30);
-      console.log('=== Smart Brainstorming ===');
-      console.log('Target Node:', targetNote.content);
+      console.log('=== 🚀 Smart Brainstorming Debug Start ===');
+      console.log('📍 Target Node:', targetNote.content);
+      console.log('📍 Target Node ID:', targetNote.id);
       
       // 智能分析節點類型和位置
       const childCount = outgoingConnections.length;
       const parentCount = incomingConnections.length;
+      
+      console.log('📊 Node Statistics:');
+      console.log('  - Parent Count:', parentCount);
+      console.log('  - Child Count:', childCount);
+      console.log('  - All Related Notes:', allRelatedNotes.length);
       
       // 建立結構化的上下文
       let contextInfo = '';
@@ -123,6 +145,10 @@ export class AIService {
       const parentNodes = incomingConnections.slice(0, 2).map(c => c.note.content);
       const childNodes = outgoingConnections.slice(0, 3).map(c => c.note.content);
       const siblingNodes = [];
+      
+      console.log('🔗 Connected Nodes:');
+      console.log('  - Parent Nodes:', parentNodes);
+      console.log('  - Child Nodes:', childNodes);
       
       // 找出真正的兄弟節點
       if (parentCount > 0 && incomingConnections[0].note) {
@@ -139,6 +165,8 @@ export class AIService {
           .map(n => n!.content);
         siblingNodes.push(...siblings);
       }
+      
+      console.log('  - Sibling Nodes:', siblingNodes);
       
       // 判斷發想類型
       if (childCount === 0 && parentCount > 0) {
@@ -159,6 +187,10 @@ export class AIService {
       if (siblingNodes.length > 0) {
         contextInfo += `\n平行概念：${siblingNodes.join('、')}`;
       }
+      
+      console.log('\n🎯 Node Type Analysis:');
+      console.log('  - Type:', brainstormType);
+      console.log('  - Context Info:', contextInfo);
       
       onProgress?.('✨ 生成創意中...', 70);
       
@@ -185,39 +217,61 @@ ${contextInfo}
 
 直接輸出概念（不要編號或解釋）：`;
       
+      console.log('\n📝 === FINAL PROMPT ===');
+      console.log('🤖 System Prompt:');
+      console.log(systemPrompt);
+      console.log('\n👤 User Prompt:');
+      console.log(userPrompt);
+      console.log('📝 === END PROMPT ===\n');
+      
+      const requestBody = {
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ],
+        max_tokens: 150,
+        temperature: 0.8,
+        presence_penalty: 0.3,
+        frequency_penalty: 0.2
+      };
+      
+      console.log('🔧 API Parameters:');
+      console.log('  - Model:', requestBody.model);
+      console.log('  - Max Tokens:', requestBody.max_tokens);
+      console.log('  - Temperature:', requestBody.temperature);
+      console.log('  - Presence Penalty:', requestBody.presence_penalty);
+      console.log('  - Frequency Penalty:', requestBody.frequency_penalty);
+      
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt
-            },
-            {
-              role: 'user',
-              content: userPrompt
-            }
-          ],
-          max_tokens: 150,
-          temperature: 0.8,
-          presence_penalty: 0.3,
-          frequency_penalty: 0.2
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
+      
+      console.log('\n🎉 === API RESPONSE ===');
+      console.log('Status:', response.status);
+      
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        console.error('API failed:', data);
+        console.error('❌ API failed:', data);
         return [`${targetNote.content}發想`];
       }
       
       const result = data.choices[0].message.content;
-      console.log('Generated:', result);
+      console.log('✅ Raw Generated Content:');
+      console.log(result);
+      console.log('🎉 === END RESPONSE ===\n');
       
       // 解析回應
       const lines = result.split('\n')
@@ -236,6 +290,10 @@ ${contextInfo}
         })
         .filter((line: string) => line.length > 0 && line.length <= 15)
         .slice(0, 5);
+      
+      console.log('📋 Parsed Results:', lines);
+      console.log('📋 Total Valid Ideas:', lines.length);
+      console.log('=== 🏁 Smart Brainstorming Debug End ===\n');
       
       onProgress?.('🎉 完成！', 100);
       

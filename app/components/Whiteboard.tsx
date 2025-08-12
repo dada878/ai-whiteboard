@@ -1509,9 +1509,9 @@ const Whiteboard: React.FC = () => {
   ) => {
     const NOTE_WIDTH = 180;
     const NOTE_HEIGHT = 180;
-    const HORIZONTAL_GAP = 40;  // 橫向間距
-    const VERTICAL_GAP = 40;    // 縱向間距
-    const RADIUS_INCREMENT = 280; // 每層的半徑增量（稍微增加避免重疊）
+    const HORIZONTAL_GAP = 60;  // 橫向間距（增加到 60px）
+    const VERTICAL_GAP = 60;    // 縱向間距（增加到 60px）
+    const RADIUS_INCREMENT = 350; // 每層的半徑增量（增加到 350px 確保更大間距）
     
     // 分析現有子節點的分布
     const childPositions = existingChildren.map(child => ({
@@ -1533,15 +1533,15 @@ const Whiteboard: React.FC = () => {
           const direction = Math.atan2(targetNote.y - parentNote.y, targetNote.x - parentNote.x);
           layoutStrategy = 'directional';
           
-          // 扇形展開 - 根據數量調整角度
-          const angleSpread = Math.min(Math.PI / 2, (Math.PI / 6) * newIdeasCount); // 動態調整扇形角度
+          // 扇形展開 - 根據數量調整角度，增加間距
+          const angleSpread = Math.min(Math.PI * 2/3, (Math.PI / 4) * newIdeasCount); // 增加角度間距
           const startAngle = direction - angleSpread / 2;
           const angleStep = newIdeasCount > 1 ? angleSpread / (newIdeasCount - 1) : 0;
           
           return Array.from({ length: newIdeasCount }, (_, index) => {
             const angle = startAngle + angleStep * index;
             // 稍微交錯排列，避免過於規則
-            const radiusOffset = (index % 2) * 30;
+            const radiusOffset = (index % 2) * 40; // 增加交錯幅度
             const radius = RADIUS_INCREMENT + radiusOffset;
             return {
               x: targetNote.x + Math.cos(angle) * radius,
@@ -1551,9 +1551,9 @@ const Whiteboard: React.FC = () => {
         }
       }
       
-      // 預設：優雅的弧形分布
+      // 預設：優雅的弧形分布，增加間距
       const baseAngle = Math.PI / 2; // 向下為主要方向
-      const spread = Math.min(Math.PI * 2/3, (Math.PI / 5) * newIdeasCount); // 最大120度
+      const spread = Math.min(Math.PI, (Math.PI / 3) * newIdeasCount); // 增加展開角度
       const startAngle = baseAngle - spread / 2;
       const angleStep = newIdeasCount > 1 ? spread / (newIdeasCount - 1) : 0;
       
@@ -1562,7 +1562,7 @@ const Whiteboard: React.FC = () => {
         // 中間的節點稍微靠前，形成弧形
         const centerIndex = (newIdeasCount - 1) / 2;
         const distanceFromCenter = Math.abs(index - centerIndex);
-        const radiusAdjust = -distanceFromCenter * 15; // 中間節點更近
+        const radiusAdjust = -distanceFromCenter * 20; // 增加弧度變化
         const radius = RADIUS_INCREMENT + radiusAdjust;
         
         return {
@@ -1604,8 +1604,8 @@ const Whiteboard: React.FC = () => {
         const angle = gapStart + angleStep * (i + 1);
         const normalizedAngle = angle % (2 * Math.PI);
         
-        // 稍微隨機化半徑，避免太規律
-        const radiusVariation = (Math.random() - 0.5) * 50;
+        // 稍微隨機化半徑，避免太規律（增加變化範圍）
+        const radiusVariation = (Math.random() - 0.5) * 70;
         const radius = RADIUS_INCREMENT + radiusVariation;
         
         positions.push({
