@@ -27,7 +27,7 @@ export class AIService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -52,8 +52,8 @@ export class AIService {
 請直接輸出概念，每行一個：`
             }
           ],
-          max_tokens: 300,
-          temperature: 0.7,
+          max_tokens: 200,
+          temperature: 0.6,
         }),
       });
 
@@ -88,177 +88,30 @@ export class AIService {
     }
 
     try {
-      onProgress?.('🔍 分析思維導圖結構...', 10);
-      console.log('=== Starting Multi-Step Chain of Thought ===');
+      onProgress?.('💡 快速生成創意...', 50);
+      console.log('=== Quick Brainstorming ===');
       console.log('Target Node:', targetNote.content);
-      // 建立層級化的 Mind Map 結構
-      let mindMapStructure = '### Mind Map 結構：\n\n';
       
-      // 建立一個訪問記錄，避免重複
-      const visited = new Set<string>();
-      visited.add(targetNote.id);
+      // 簡化：只收集直接相關的節點
+      const contextNodes = [];
       
-      // 遞迴建立子樹結構
-      const buildSubTree = (noteId: string, depth: number = 0, maxDepth: number = 2): string => {
-        if (depth > maxDepth) return '';
-        
-        let result = '';
-        const childEdges = whiteboardData.edges.filter(edge => edge.from === noteId);
-        
-        childEdges.forEach(edge => {
-          if (!visited.has(edge.to)) {
-            visited.add(edge.to);
-            const childNote = whiteboardData.notes.find(n => n.id === edge.to);
-            if (childNote) {
-              const indent = '  '.repeat(depth + 1);
-              // 將換行符號替換成 \n
-              const cleanContent = childNote.content.replace(/\n/g, '\\n');
-              result += `${indent}- ${cleanContent}\n`;
-              result += buildSubTree(childNote.id, depth + 1, maxDepth);
-            }
-          }
-        });
-        
-        return result;
-      };
-      
-      // 遞迴建立父樹結構
-      const buildParentTree = (noteId: string, depth: number = 0, maxDepth: number = 2): string => {
-        if (depth > maxDepth) return '';
-        
-        let result = '';
-        const parentEdges = whiteboardData.edges.filter(edge => edge.to === noteId);
-        
-        if (parentEdges.length > 0 && depth < maxDepth) {
-          parentEdges.forEach(edge => {
-            if (!visited.has(edge.from)) {
-              visited.add(edge.from);
-              const parentNote = whiteboardData.notes.find(n => n.id === edge.from);
-              if (parentNote) {
-                const indent = '  '.repeat(maxDepth - depth - 1);
-                const parentTree = buildParentTree(parentNote.id, depth + 1, maxDepth);
-                // 將換行符號替換成 \n
-                const cleanContent = parentNote.content.replace(/\n/g, '\\n');
-                result = `${parentTree}${indent}- ${cleanContent}\n${result}`;
-              }
-            }
-          });
-        }
-        
-        return result;
-      };
-      
-      // 找出根節點（沒有父節點的節點）
-      const findRootNodes = (): StickyNote[] => {
-        const roots: StickyNote[] = [];
-        const hasParent = new Set<string>();
-        
-        whiteboardData.edges.forEach(edge => {
-          hasParent.add(edge.to);
-        });
-        
-        whiteboardData.notes.forEach(note => {
-          if (!hasParent.has(note.id)) {
-            roots.push(note);
-          }
-        });
-        
-        return roots;
-      };
-      
-      // 從根節點開始構建完整樹
-      let fullTreeStructure = '';
-      const roots = findRootNodes();
-      
-      // 找到當前節點所在的樹
-      const findTreeFromRoot = (rootId: string, targetId: string, path: string[] = []): string[] | null => {
-        if (rootId === targetId) return [...path, rootId];
-        
-        const children = whiteboardData.edges.filter(e => e.from === rootId);
-        for (const child of children) {
-          const result = findTreeFromRoot(child.to, targetId, [...path, rootId]);
-          if (result) return result;
-        }
-        return null;
-      };
-      
-      // 找到包含目標節點的根
-      let targetRoot: StickyNote | null = null;
-      let pathToTarget: string[] = [];
-      
-      for (const root of roots) {
-        const path = findTreeFromRoot(root.id, targetNote.id);
-        if (path) {
-          targetRoot = root;
-          pathToTarget = path;
-          break;
-        }
+      // 添加父節點
+      if (incomingConnections.length > 0) {
+        contextNodes.push(...incomingConnections.slice(0, 2).map(c => c.note.content));
       }
       
-      // 如果沒找到根（說明在環狀結構中），使用最上層的祖先作為根
-      if (!targetRoot && incomingConnections.length > 0) {
-        let current = incomingConnections[0].note;
-        let parent = incomingConnections[0].note;
-        
-        while (true) {
-          const parentEdge = whiteboardData.edges.find(e => e.to === current.id);
-          if (!parentEdge) break;
-          const parentNote = whiteboardData.notes.find(n => n.id === parentEdge.from);
-          if (!parentNote || visited.has(parentNote.id)) break;
-          parent = parentNote;
-          current = parentNote;
-          visited.add(parentNote.id);
-        }
-        
-        targetRoot = parent;
+      // 添加子節點
+      if (outgoingConnections.length > 0) {
+        contextNodes.push(...outgoingConnections.slice(0, 3).map(c => c.note.content));
       }
       
-      // 找到目標節點的根節點
-      const findRoot = (nodeId: string, visitedNodes: Set<string> = new Set()): string => {
-        if (visitedNodes.has(nodeId)) return nodeId; // 避免循環
-        visitedNodes.add(nodeId);
-        
-        const parentEdge = whiteboardData.edges.find(e => e.to === nodeId);
-        if (!parentEdge) return nodeId; // 沒有父節點，這就是根
-        
-        return findRoot(parentEdge.from, visitedNodes);
-      };
+      // 添加兄弟節點
+      const siblings = allRelatedNotes.slice(0, 2).map(n => n.content);
+      contextNodes.push(...siblings);
       
-      const rootId = findRoot(targetNote.id);
-      
-      // 使用 BFS 建立完整的樹結構
-      const buildFullTree = (rootId: string, maxDepth: number = 4): string => {
-        const visited = new Set<string>();
-        let result = '';
-        
-        const buildSubTree = (nodeId: string, depth: number = 0): string => {
-          if (depth > maxDepth || visited.has(nodeId)) return '';
-          visited.add(nodeId);
-          
-          const node = whiteboardData.notes.find(n => n.id === nodeId);
-          if (!node) return '';
-          
-          const indent = '  '.repeat(depth);
-          const cleanContent = node.content.replace(/\n/g, '\\n');
-          
-          let treeStr = `${indent}- ${cleanContent}\n`;
-          
-          // 找出所有子節點
-          const childEdges = whiteboardData.edges.filter(e => e.from === nodeId);
-          childEdges.forEach(edge => {
-            treeStr += buildSubTree(edge.to, depth + 1);
-          });
-          
-          return treeStr;
-        };
-        
-        result = buildSubTree(rootId, 0);
-        return result;
-      };
-      
-      // 建立完整的樹結構
-      mindMapStructure = '### Mind Map 結構：\n\n';
-      mindMapStructure += buildFullTree(rootId);
+      const contextString = contextNodes.length > 0 
+        ? `相關概念：${contextNodes.join('、')}`
+        : '';
       
       // ====== Step 1: 分析整體思維導圖 ======
       onProgress?.('📊 Step 1: 深度分析思維導圖整體結構...', 25);
@@ -271,7 +124,7 @@ export class AIService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -282,7 +135,7 @@ export class AIService {
               content: `請分析以下思維導圖：\n\n${mindMapStructure}\n\n請回答：\n1. 這個思維導圖的核心主題是什麼？\n2. 整體目標和意圖是什麼？\n3. 知識結構的主要脈絡為何？\n\n請提供深入且結構化的分析。`
             }
           ],
-          max_tokens: 600,
+          max_tokens: 400,
           temperature: 0.3,
         }),
       });
@@ -309,7 +162,7 @@ export class AIService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -320,7 +173,7 @@ export class AIService {
               content: `基於以下分析：\n${mindMapAnalysis}\n\n請分析節點「${targetNote.content}」：\n1. 它在整體結構中扮演什麼角色？\n2. 它與父節點、子節點的關係是什麼？\n3. 這個分支主要在探討什麼？\n\n節點資訊：\n- 子節點數：${whiteboardData.edges.filter(e => e.from === targetNote.id).length}\n- 父節點數：${whiteboardData.edges.filter(e => e.to === targetNote.id).length}`
             }
           ],
-          max_tokens: 500,
+          max_tokens: 350,
           temperature: 0.3,
         }),
       });
@@ -367,7 +220,7 @@ export class AIService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -518,7 +371,7 @@ ${brainstormStrategy}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -529,8 +382,8 @@ ${brainstormStrategy}
               content: finalUserPrompt
             }
           ],
-          max_tokens: 300,
-          temperature: 0.7,
+          max_tokens: 200,
+          temperature: 0.6,
         }),
       });
 
@@ -629,7 +482,7 @@ ${brainstormStrategy}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -671,7 +524,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -715,7 +568,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -761,7 +614,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
 請做出最終收斂決策，選出最關鍵的${maxKeepCount}個項目保留，其餘移除。`
             }
           ],
-          max_tokens: 800,
+          max_tokens: 500,
           temperature: 0.1,
         }),
       });
@@ -838,7 +691,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -881,7 +734,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -927,7 +780,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -967,7 +820,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -1016,7 +869,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -1078,7 +931,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -1152,7 +1005,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -1217,7 +1070,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -1365,7 +1218,7 @@ ${userPrompt}`;
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -1442,7 +1295,7 @@ ${userPrompt}`;
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -1533,7 +1386,7 @@ ${userPrompt}`;
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -1622,7 +1475,7 @@ ${userPrompt}`;
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -1710,7 +1563,7 @@ ${userPrompt}`;
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
@@ -1810,7 +1663,7 @@ ${userPrompt}`;
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',

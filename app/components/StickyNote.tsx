@@ -630,7 +630,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
         ref={nodeRef}
         className={`sticky-note absolute select-none ${(isSelected || isPreviewSelected) ? 'z-20' : 'z-10'} ${
           dragState?.isDragging ? 'cursor-grabbing' : 'cursor-pointer'
-        }`}
+        } ${isAILoading ? 'ai-loading-effect' : ''}`}
         data-note-id={note.id}
         style={{
           width: note.width,
@@ -645,7 +645,13 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
       >
           <div
             className={`w-full h-full rounded-lg shadow-lg border-2 transition-all ${
-              dragState?.isDragging
+              isAILoading
+                ? `shadow-2xl ring-4 ring-offset-2 ${
+                    isDarkMode 
+                      ? 'border-blue-400 ring-blue-400/50 ring-offset-gray-900 shadow-blue-400/30' 
+                      : 'border-blue-500 ring-blue-400/60 ring-offset-white shadow-blue-400/40'
+                  }`
+                : dragState?.isDragging
                 ? 'cursor-grabbing border-blue-500'
                 : isConnecting 
                 ? `shadow-xl ring-2 ${
@@ -691,7 +697,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
             >
               {isEditing ? (
                 <div
-                  ref={textareaRef as React.RefObject<HTMLDivElement>}
+                  ref={textareaRef as any}
                   contentEditable="true"
                   suppressContentEditableWarning={true}
                   onInput={(e) => {
@@ -1002,6 +1008,26 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
             )}
           </div>
         </div>
+
+      {/* AI Loading 動畫覆蓋層 - 移除背景遮罩，只保留 spinner */}
+      {isAILoading && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center rounded-lg pointer-events-none">
+          <div className="flex flex-col items-center gap-3">
+            {/* 主要的 loading spinner */}
+            <div className="relative">
+              <div className="w-12 h-12 border-4 border-blue-200/50 rounded-full" />
+              <div className="absolute top-0 left-0 w-12 h-12 border-4 border-transparent border-t-blue-500 border-r-blue-500 rounded-full animate-spin" />
+            </div>
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-full shadow-lg animate-pulse ${
+              isDarkMode 
+                ? 'text-blue-100 bg-blue-600/90' 
+                : 'text-white bg-blue-500/90'
+            }`}>
+              ✨ AI 發想中
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* 右鍵選單 - 使用 Portal 渲染到 body */}
       {showContextMenu && createPortal(
