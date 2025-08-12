@@ -1500,6 +1500,142 @@ const Whiteboard: React.FC = () => {
     };
   }, [whiteboardData]);
 
+  // 智能計算新便利貼的位置
+  const calculateSmartLayout = (
+    targetNote: StickyNote,
+    existingChildren: StickyNote[],
+    newIdeasCount: number,
+    whiteboardData: WhiteboardData
+  ) => {
+    const NOTE_WIDTH = 180;
+    const NOTE_HEIGHT = 180;
+    const HORIZONTAL_GAP = 40;  // 橫向間距
+    const VERTICAL_GAP = 40;    // 縱向間距
+    const RADIUS_INCREMENT = 280; // 每層的半徑增量（稍微增加避免重疊）
+    
+    // 分析現有子節點的分布
+    const childPositions = existingChildren.map(child => ({
+      x: child.x,
+      y: child.y,
+      angle: Math.atan2(child.y - targetNote.y, child.x - targetNote.x)
+    }));
+    
+    // 判斷現有佈局模式
+    let layoutStrategy = 'auto';
+    
+    if (existingChildren.length === 0) {
+      // 沒有子節點，根據父節點位置決定
+      const parentEdge = whiteboardData.edges.find(e => e.to === targetNote.id);
+      if (parentEdge) {
+        const parentNote = whiteboardData.notes.find(n => n.id === parentEdge.from);
+        if (parentNote) {
+          // 延續父節點到目標節點的方向
+          const direction = Math.atan2(targetNote.y - parentNote.y, targetNote.x - parentNote.x);
+          layoutStrategy = 'directional';
+          
+          // 扇形展開 - 根據數量調整角度
+          const angleSpread = Math.min(Math.PI / 2, (Math.PI / 6) * newIdeasCount); // 動態調整扇形角度
+          const startAngle = direction - angleSpread / 2;
+          const angleStep = newIdeasCount > 1 ? angleSpread / (newIdeasCount - 1) : 0;
+          
+          return Array.from({ length: newIdeasCount }, (_, index) => {
+            const angle = startAngle + angleStep * index;
+            // 稍微交錯排列，避免過於規則
+            const radiusOffset = (index % 2) * 30;
+            const radius = RADIUS_INCREMENT + radiusOffset;
+            return {
+              x: targetNote.x + Math.cos(angle) * radius,
+              y: targetNote.y + Math.sin(angle) * radius
+            };
+          });
+        }
+      }
+      
+      // 預設：優雅的弧形分布
+      const baseAngle = Math.PI / 2; // 向下為主要方向
+      const spread = Math.min(Math.PI * 2/3, (Math.PI / 5) * newIdeasCount); // 最大120度
+      const startAngle = baseAngle - spread / 2;
+      const angleStep = newIdeasCount > 1 ? spread / (newIdeasCount - 1) : 0;
+      
+      return Array.from({ length: newIdeasCount }, (_, index) => {
+        const angle = startAngle + angleStep * index;
+        // 中間的節點稍微靠前，形成弧形
+        const centerIndex = (newIdeasCount - 1) / 2;
+        const distanceFromCenter = Math.abs(index - centerIndex);
+        const radiusAdjust = -distanceFromCenter * 15; // 中間節點更近
+        const radius = RADIUS_INCREMENT + radiusAdjust;
+        
+        return {
+          x: targetNote.x + Math.cos(angle) * radius,
+          y: targetNote.y + Math.sin(angle) * radius
+        };
+      });
+    }
+    
+    // 有現有子節點，找出空缺的角度區域
+    if (existingChildren.length > 0) {
+      // 排序現有角度
+      const sortedAngles = childPositions.map(p => p.angle).sort((a, b) => a - b);
+      
+      // 找出最大的角度間隙
+      let maxGap = 0;
+      let gapStart = 0;
+      let gapEnd = 0;
+      
+      for (let i = 0; i < sortedAngles.length; i++) {
+        const currentAngle = sortedAngles[i];
+        const nextAngle = sortedAngles[(i + 1) % sortedAngles.length];
+        const gap = (i === sortedAngles.length - 1) 
+          ? (2 * Math.PI + nextAngle - currentAngle) % (2 * Math.PI)
+          : nextAngle - currentAngle;
+        
+        if (gap > maxGap) {
+          maxGap = gap;
+          gapStart = currentAngle;
+          gapEnd = (i === sortedAngles.length - 1) ? nextAngle + 2 * Math.PI : nextAngle;
+        }
+      }
+      
+      // 在最大間隙中均勻分布新節點
+      const angleStep = maxGap / (newIdeasCount + 1);
+      const positions = [];
+      
+      for (let i = 0; i < newIdeasCount; i++) {
+        const angle = gapStart + angleStep * (i + 1);
+        const normalizedAngle = angle % (2 * Math.PI);
+        
+        // 稍微隨機化半徑，避免太規律
+        const radiusVariation = (Math.random() - 0.5) * 50;
+        const radius = RADIUS_INCREMENT + radiusVariation;
+        
+        positions.push({
+          x: targetNote.x + Math.cos(normalizedAngle) * radius,
+          y: targetNote.y + Math.sin(normalizedAngle) * radius
+        });
+      }
+      
+      return positions;
+    }
+    
+    // 備用方案：網格佈局
+    const cols = Math.ceil(Math.sqrt(newIdeasCount));
+    const rows = Math.ceil(newIdeasCount / cols);
+    
+    return Array.from({ length: newIdeasCount }, (_, index) => {
+      const row = Math.floor(index / cols);
+      const col = index % cols;
+      
+      // 置中對齊
+      const totalWidth = cols * NOTE_WIDTH + (cols - 1) * HORIZONTAL_GAP;
+      const startX = targetNote.x + RADIUS_INCREMENT - totalWidth / 2;
+      
+      return {
+        x: startX + col * (NOTE_WIDTH + HORIZONTAL_GAP),
+        y: targetNote.y + row * (NOTE_HEIGHT + VERTICAL_GAP)
+      };
+    });
+  };
+
   const handleAIBrainstorm = async (noteId: string) => {
     const networkAnalysis = analyzeRelatedNetwork(noteId);
     if (!networkAnalysis) return;
@@ -1571,15 +1707,31 @@ const Whiteboard: React.FC = () => {
       
       const ideas = await aiService.brainstormWithContext(networkAnalysis, whiteboardData, onProgress);
       
-      // 為每個想法創建新的便利貼 - 緊湊佈局適應簡短內容
+      // 找出目標節點的現有子節點
+      const existingChildEdges = whiteboardData.edges.filter(e => e.from === noteId);
+      const existingChildren = existingChildEdges
+        .map(edge => whiteboardData.notes.find(n => n.id === edge.to))
+        .filter((note): note is StickyNote => note !== undefined);
+      
+      // 使用智能佈局計算新便利貼的位置
+      const smartPositions = calculateSmartLayout(
+        networkAnalysis.targetNote,
+        existingChildren,
+        ideas.length,
+        whiteboardData
+      );
+      
+      // 為每個想法創建新的便利貼 - 使用智能佈局
       const newNotes = ideas.map((idea, index) => {
-        const row = Math.floor(index / 2);
-        const col = index % 2;
+        const position = smartPositions[index] || { 
+          x: networkAnalysis.targetNote.x + 250, 
+          y: networkAnalysis.targetNote.y 
+        };
         
         return {
           id: uuidv4(),
-          x: networkAnalysis.targetNote.x + 250 + (col * 220),
-          y: networkAnalysis.targetNote.y + (row * 200),
+          x: position.x,
+          y: position.y,
           width: 180,
           height: 180,
           content: idea,

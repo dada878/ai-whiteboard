@@ -31,39 +31,58 @@ export class AIService {
           messages: [
             {
               role: 'system',
-              content: `你是創意發想助手，擅長基於核心概念進行有意義的延伸思考。
+              content: `你是專業的創意發想專家，擅長產生高品質、實用的想法。
 
-任務要求：
-- 生成 4 個相關概念，每個 3-8 字
-- 概念要實用、具體、有價值
-- 適合作為便利貼內容
-- 每行一個想法，不要編號或符號
+核心能力：
+- 深入理解概念本質
+- 產生創新但可執行的想法
+- 平衡創意與實用性
+- 確保概念的多樣性
 
-發想方向建議：
-1. 實際應用或案例
-2. 關鍵組成要素
-3. 相關方法或工具
-4. 延伸影響或效果`
+輸出規範：
+- 4-5個概念，每個3-8字
+- 涵蓋不同面向
+- 避免重複或相似概念`
             },
             {
               role: 'user',
-              content: `基於「${content}」這個概念，請生成4個有價值的相關概念。
+              content: `為「${content}」生成高品質延伸概念。
 
-請直接輸出概念，每行一個：`
+思考方向：
+- 核心功能/特性
+- 實際應用場景
+- 關鍵技術/方法
+- 創新可能性
+- 相關領域連結
+
+直接輸出（不要編號）：`
             }
           ],
-          max_tokens: 200,
-          temperature: 0.6,
+          max_tokens: 150,
+          temperature: 0.75,
+          presence_penalty: 0.3,
         }),
       });
 
       const data = await response.json();
       const result = data.choices[0].message.content;
       
-      // 解析回應並過濾空行
+      // 解析回應並過濾
       return result.split('\n')
-        .map((line: string) => line.trim())
-        .filter((line: string) => line.length > 0 && line.length <= 15); // 限制字數
+        .map((line: string) => {
+          let cleaned = line.trim();
+          // 移除編號
+          cleaned = cleaned.replace(/^\d+[\.\、\)]\s*/, '');
+          // 移除引號
+          cleaned = cleaned.replace(/^[「『"'"]|[」』"'"]$/g, '');
+          // 移除冒號後的解釋
+          if (cleaned.includes('：')) {
+            cleaned = cleaned.split('：')[0];
+          }
+          return cleaned;
+        })
+        .filter((line: string) => line.length > 0 && line.length <= 15)
+        .slice(0, 5);
     } catch (error) {
       console.error('AI brainstorm error:', error);
       return [`${content}發想`];
@@ -88,283 +107,85 @@ export class AIService {
     }
 
     try {
-      onProgress?.('💡 快速生成創意...', 50);
-      console.log('=== Quick Brainstorming ===');
+      onProgress?.('💡 分析脈絡...', 30);
+      console.log('=== Smart Brainstorming ===');
       console.log('Target Node:', targetNote.content);
       
-      // 簡化：只收集直接相關的節點
-      const contextNodes = [];
+      // 智能分析節點類型和位置
+      const childCount = outgoingConnections.length;
+      const parentCount = incomingConnections.length;
       
-      // 添加父節點
-      if (incomingConnections.length > 0) {
-        contextNodes.push(...incomingConnections.slice(0, 2).map(c => c.note.content));
-      }
+      // 建立結構化的上下文
+      let contextInfo = '';
+      let brainstormType = '';
       
-      // 添加子節點
-      if (outgoingConnections.length > 0) {
-        contextNodes.push(...outgoingConnections.slice(0, 3).map(c => c.note.content));
-      }
+      // 收集關鍵上下文
+      const parentNodes = incomingConnections.slice(0, 2).map(c => c.note.content);
+      const childNodes = outgoingConnections.slice(0, 3).map(c => c.note.content);
+      const siblingNodes = [];
       
-      // 添加兄弟節點
-      const siblings = allRelatedNotes.slice(0, 2).map(n => n.content);
-      contextNodes.push(...siblings);
-      
-      const contextString = contextNodes.length > 0 
-        ? `相關概念：${contextNodes.join('、')}`
-        : '';
-      
-      // ====== Step 1: 分析整體思維導圖 ======
-      onProgress?.('📊 Step 1: 深度分析思維導圖整體結構...', 25);
-      console.log('\n=== Step 1: Analyzing Mind Map Structure ===');
-      
-      const step1Response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: '你是思維導圖分析專家。請深入分析提供的思維導圖結構，識別核心主題、整體目標和知識架構。'
-            },
-            {
-              role: 'user',
-              content: `請分析以下思維導圖：\n\n${mindMapStructure}\n\n請回答：\n1. 這個思維導圖的核心主題是什麼？\n2. 整體目標和意圖是什麼？\n3. 知識結構的主要脈絡為何？\n\n請提供深入且結構化的分析。`
-            }
-          ],
-          max_tokens: 400,
-          temperature: 0.3,
-        }),
-      });
-
-      const step1Data = await step1Response.json();
-      if (!step1Data.choices || !step1Data.choices[0] || !step1Data.choices[0].message) {
-        console.error('Step 1 failed:', step1Data);
-        throw new Error('Failed to analyze mind map structure');
-      }
-      const mindMapAnalysis = step1Data.choices[0].message.content;
-      console.log('Mind Map Analysis:', mindMapAnalysis);
-      
-      // 傳遞 Step 1 的詳細結果
-      onProgress?.('📊 Step 1 完成：深度分析思維導圖整體結構', 25, mindMapAnalysis);
-      
-      // ====== Step 2: 分析目標節點定位 ======
-      onProgress?.('🎯 Step 2: 分析目標節點在整體架構中的定位...', 50);
-      console.log('\n=== Step 2: Analyzing Target Node Position ===');
-      
-      const step2Response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: '基於之前的思維導圖分析，現在請分析特定節點在整體架構中的角色。'
-            },
-            {
-              role: 'user',
-              content: `基於以下分析：\n${mindMapAnalysis}\n\n請分析節點「${targetNote.content}」：\n1. 它在整體結構中扮演什麼角色？\n2. 它與父節點、子節點的關係是什麼？\n3. 這個分支主要在探討什麼？\n\n節點資訊：\n- 子節點數：${whiteboardData.edges.filter(e => e.from === targetNote.id).length}\n- 父節點數：${whiteboardData.edges.filter(e => e.to === targetNote.id).length}`
-            }
-          ],
-          max_tokens: 350,
-          temperature: 0.3,
-        }),
-      });
-
-      const step2Data = await step2Response.json();
-      if (!step2Data.choices || !step2Data.choices[0] || !step2Data.choices[0].message) {
-        console.error('Step 2 failed:', step2Data);
-        throw new Error('Failed to analyze node position');
-      }
-      const nodeAnalysis = step2Data.choices[0].message.content;
-      console.log('Node Position Analysis:', nodeAnalysis);
-      
-      // 傳遞 Step 2 的詳細結果
-      onProgress?.('🎯 Step 2 完成：分析目標節點在整體架構中的定位', 50, nodeAnalysis);
-      
-      // ====== Step 3: 制定發想策略 ======
-      onProgress?.('🧠 Step 3: 制定智能發想策略...', 70);
-      console.log('\n=== Step 3: Developing Brainstorming Strategy ===');
-      
-      // 分析節點特性以制定合適的發想策略
-      const childCount = whiteboardData.edges.filter(e => e.from === targetNote.id).length;
-      const parentCount = whiteboardData.edges.filter(e => e.to === targetNote.id).length;
-      
-      // 判斷節點類型
-      let nodeType = '';
-      if (targetNote.content.includes('客群') || targetNote.content.includes('用戶') || targetNote.content.includes('使用者')) {
-        nodeType = '目標群體分類';
-      } else if (targetNote.content.includes('功能') || targetNote.content.includes('特性') || targetNote.content.includes('特色')) {
-        nodeType = '功能特性分類';
-      } else if (targetNote.content.includes('問題') || targetNote.content.includes('挑戰') || targetNote.content.includes('痛點')) {
-        nodeType = '問題類型分類';
-      } else if (childCount > 0) {
-        nodeType = '分類節點';
-      } else {
-        nodeType = '具體項目';
-      }
-      
-      console.log('Detected node type:', nodeType);
-      
-      const step3Response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: '你是發想策略專家。基於節點特性制定最合適的發想方向。'
-            },
-            {
-              role: 'user',
-              content: `基於分析：\n\n思維導圖分析：\n${mindMapAnalysis}\n\n節點定位分析：\n${nodeAnalysis}\n\n節點「${targetNote.content}」的特性：\n- 節點類型：${nodeType}\n- 現有子節點數：${childCount}\n- 父節點數：${parentCount}\n\n請制定發想策略：\n\n如果是「分類節點」或「目標群體分類」：\n- 應該發想更多平行的類別項目\n- 擴展同層次的不同選項\n- 避免深入單一項目的細節\n\n如果是「具體項目」：\n- 可以深入分析需求、方法、細節\n- 探索實現方式和相關要素\n\n請明確指出：\n1. 這個節點應該往哪個方向發想？\n2. 是要「擴展更多類別」還是「深入具體內容」？\n3. 具體的發想重點是什麼？`
-            }
-          ],
-          max_tokens: 500,
-          temperature: 0.5,
-        }),
-      });
-
-      const step3Data = await step3Response.json();
-      if (!step3Data.choices || !step3Data.choices[0] || !step3Data.choices[0].message) {
-        console.error('Step 3 failed:', step3Data);
-        throw new Error('Failed to develop brainstorming strategy');
-      }
-      const brainstormStrategy = step3Data.choices[0].message.content;
-      console.log('Brainstorming Strategy:', brainstormStrategy);
-      
-      // 傳遞 Step 3 的詳細結果
-      onProgress?.('🧠 Step 3 完成：制定智能發想策略', 70, brainstormStrategy);
-      
-      // 分析整個樹的字數統計
-      const analyzeTreeTextLength = (): { avg: number; min: number; max: number } => {
-        const lengths = whiteboardData.notes.map(note => {
-          // 計算實際顯示的字符數（考慮中文字符）
-          return Array.from(note.content.replace(/\n/g, '')).reduce((count, char) => {
-            // 中文、日文、韓文字符算作 2 個英文字符的寬度
-            if (/[\u4e00-\u9fff\u3400-\u4dbf\uac00-\ud7af]/.test(char)) {
-              return count + 2;
-            }
-            return count + 1;
-          }, 0);
-        });
+      // 找出真正的兄弟節點
+      if (parentCount > 0 && incomingConnections[0].note) {
+        // 找出父節點的 ID
+        const parentNote = incomingConnections[0].note;
+        const parentId = parentNote.id;
         
-        const avg = lengths.reduce((sum, len) => sum + len, 0) / lengths.length;
-        const min = Math.min(...lengths);
-        const max = Math.max(...lengths);
-        
-        return { avg, min, max };
-      };
-      
-      const textStats = analyzeTreeTextLength();
-      
-      // 動態計算字數範圍（基於平均值）
-      // textStats.avg 是單位數（中文算2），轉換為實際字符數（假設多數為中文）
-      const avgChars = Math.round(textStats.avg / 1.5); // 混合中英文的平均估算
-      const minChars = Math.max(3, Math.round(avgChars * 0.7));
-      const maxChars = Math.max(8, Math.round(avgChars * 1.3));
-      
-      // 判斷發想方向
-      let brainstormDirection = '';
-      
-      // 計算同層兄弟節點數量
-      let siblingCount = 0;
-      if (parentCount > 0) {
-        const parentIds = whiteboardData.edges.filter(e => e.to === targetNote.id).map(e => e.from);
-        parentIds.forEach(parentId => {
-          siblingCount += whiteboardData.edges.filter(e => 
-            e.from === parentId && e.to !== targetNote.id
-          ).length;
-        });
+        // 找出所有從父節點出發的邊（排除當前節點）
+        const siblings = whiteboardData.edges
+          .filter(e => e.from === parentId && e.to !== targetNote.id)
+          .slice(0, 3)
+          .map(e => whiteboardData.notes.find(n => n.id === e.to))
+          .filter(Boolean)
+          .map(n => n!.content);
+        siblingNodes.push(...siblings);
       }
       
+      // 判斷發想類型
       if (childCount === 0 && parentCount > 0) {
-        brainstormDirection = '這是末端節點，建議往實際應用、具體方法、案例方向發想';
+        brainstormType = '葉節點';
+        contextInfo = `這是「${parentNodes[0] || '上層概念'}」的具體實現`;
       } else if (parentCount === 0 && childCount > 0) {
-        brainstormDirection = '這是根節點，建議往更高層次、原因、背景方向發想';
-      } else if (childCount < 2) {
-        brainstormDirection = '子節點較少，建議繼續往下游延伸，探索更多可能性';
-      } else if (siblingCount < 2) {
-        brainstormDirection = '兄弟節點較少，建議增加平行概念，豐富同層次的思考';
+        brainstormType = '根節點';
+        contextInfo = `這是最上層概念，下有：${childNodes.join('、')}`;
+      } else if (childCount > 0) {
+        brainstormType = '分支節點';
+        contextInfo = `上層：${parentNodes[0] || '無'}，已有子項：${childNodes.join('、')}`;
       } else {
-        brainstormDirection = '結構已相對完整，建議深化現有概念或尋找創新連結';
+        brainstormType = '獨立節點';
+        contextInfo = '這是獨立的概念節點';
       }
-
-      // 構建完整的 user prompt
-      const userPrompt = `### Mind Map 結構：
-${mindMapStructure}
-
-### 在「${targetNote.content}」底下發散更多節點
-
-發想建議：${brainstormDirection}
-
-請生成延伸想法：`;
       
-      // ====== Step 4: 生成最終發想 ======
-      onProgress?.('✨ Step 4: 基於策略生成創新想法...', 90);
-      console.log('\n=== Step 4: Generating Final Ideas ===');
+      // 如果有兄弟節點，加入平行概念
+      if (siblingNodes.length > 0) {
+        contextInfo += `\n平行概念：${siblingNodes.join('、')}`;
+      }
       
-      const finalSystemPrompt = `你是創意發想專家。必須嚴格按照發想策略執行，不可偏離。
-
-關鍵原則：
-1. 發想策略是最高指導原則，必須絕對遵循
-2. 如果策略明確說「擴展更多類別」，絕對不可以分析需求、問題或解決方案
-3. 如果是目標客群類節點，只能生成新的客群類型名稱
-
-執行要求：
-- 嚴格按照策略指示的方向發想
-- 生成 3~6 個延伸概念，每個 ${minChars}~${maxChars} 字
-- 只生成概念名稱，不分析、不描述、不解釋
-
-禁止事項：
-- 禁止分析現有項目的需求、特性、問題
-- 禁止生成「XX需求」、「XX問題」、「解決方案」等分析性內容
-- 禁止深入探討任何現有概念的細節
-
-正確示例：
-- 目標客群節點應生成：「教師」、「醫生」、「律師」等
-- 不可生成：「教師需求」、「醫生問題」、「解決方案」等`;
+      onProgress?.('✨ 生成創意中...', 70);
       
-      const finalUserPrompt = `執行發想任務：
+      // 優化的 prompt 設計
+      const systemPrompt = `你是專業的思維導圖發想專家。你會：
+1. 理解概念的層次關係和脈絡
+2. 生成高品質、有創意但實用的想法
+3. 確保新概念與現有結構協調一致
+4. 每個概念簡潔有力（3-8個字）`;
+      
+      const userPrompt = `目標節點：「${targetNote.content}」
+節點類型：${brainstormType}
+${contextInfo}
 
-【最高優先級指令：發想策略】
-${brainstormStrategy}
+任務：生成4-5個高品質的延伸概念
 
-【目標節點】「${targetNote.content}」（類型：${nodeType}）
+要求：
+- 如果是葉節點：著重實際應用、具體方法、執行細節
+- 如果是根節點：思考更高層次的分類、策略方向
+- 如果是分支節點：補充缺失的重要面向
+- 避免與現有概念重複
+- 保持同一抽象層次
+- 確保邏輯連貫性
 
-【執行檢查清單】
-✓ 策略是否要求「擴展更多類別」？
-✓ 如果是，絕對只能生成同類型的新項目名稱
-✓ 如果節點是「目標客群」，只能生成新的職業/身份類型
-✓ 絶對不可分析需求、問題或提供解決方案
-
-【正確輸出格式】
-直接輸出概念名稱，每行一個：
-教師
-醫生  
-工程師
-行銷人員
-...（其他新客群）
-
-【錯誤示例（絕對不可生成）】
-❌ 教師需求：數位化教學工具
-❌ 醫生問題：時間管理困難
-❌ 解決方案：提供培訓課程
-
-現在開始執行，只輸出概念名稱：`;
-
-      const finalResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+直接輸出概念（不要編號或解釋）：`;
+      
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -375,54 +196,50 @@ ${brainstormStrategy}
           messages: [
             {
               role: 'system',
-              content: finalSystemPrompt
+              content: systemPrompt
             },
             {
               role: 'user',
-              content: finalUserPrompt
+              content: userPrompt
             }
           ],
-          max_tokens: 200,
-          temperature: 0.6,
+          max_tokens: 150,
+          temperature: 0.8,
+          presence_penalty: 0.3,
+          frequency_penalty: 0.2
         }),
       });
 
-      const finalData = await finalResponse.json();
-      
-      // 詳細日誌 API 回應
-      console.log('\n=== Final Brainstorming Result ===');
-      console.log('Status:', finalResponse.status);
-      
-      if (!finalData.choices || !finalData.choices[0] || !finalData.choices[0].message) {
-        console.error('Invalid API response structure:', finalData);
+      const data = await response.json();
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        console.error('API failed:', data);
         return [`${targetNote.content}發想`];
       }
       
-      const result = finalData.choices[0].message.content;
-      console.log('Generated Ideas:', result);
+      const result = data.choices[0].message.content;
+      console.log('Generated:', result);
       
-      // 傳遞 Step 4 的詳細結果
-      onProgress?.('✨ Step 4 完成：基於策略生成創新想法', 90, result);
-      
-      // 解析回應，移除編號和多餘符號
+      // 解析回應
       const lines = result.split('\n')
         .map((line: string) => {
-          // 移除編號（如 "1. " 或 "1、" 等）
-          let cleaned = line.trim().replace(/^\d+[\.\、]\s*/, '');
+          // 清理文字
+          let cleaned = line.trim();
+          // 移除編號
+          cleaned = cleaned.replace(/^\d+[\.\、\)]\s*/, '');
           // 移除引號
-          cleaned = cleaned.replace(/^[「『"'『]|[」』"'』]$/g, '');
+          cleaned = cleaned.replace(/^[「『"'"]|[」』"'"]$/g, '');
+          // 移除冒號後的解釋
+          if (cleaned.includes('：')) {
+            cleaned = cleaned.split('：')[0];
+          }
           return cleaned;
         })
-        .filter((line: string) => line.length > 0 && !line.includes('：'))
-        .slice(0, 6); // 最多6個想法
+        .filter((line: string) => line.length > 0 && line.length <= 15)
+        .slice(0, 5);
       
-      console.log('Parsed lines:', lines);
-      console.log('=== End of Multi-Step Chain of Thought ===\n');
+      onProgress?.('🎉 完成！', 100);
       
-      // 傳遞最終完成結果
-      onProgress?.('🎉 發想完成，正在創建便利貼...', 100, `生成了 ${lines.length} 個創新想法：\n${lines.join('\n')}`);
-      
-      return lines;
+      return lines.length > 0 ? lines : [`${targetNote.content}延伸`];
     } catch (error) {
       console.error('AI brainstorm with context error:', error);
       return [`${targetNote.content}發想`];
