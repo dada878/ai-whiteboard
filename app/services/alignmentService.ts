@@ -149,9 +149,10 @@ export class AlignmentService {
         };
         
         // 檢查是否在同一水平線上
-        if (Math.abs(noteBounds.top - horizontalSnapTarget) < 1 ||
-            Math.abs(noteBounds.bottom - horizontalSnapTarget) < 1 ||
-            Math.abs(noteBounds.centerY - horizontalSnapTarget) < 1) {
+        if (horizontalSnapTarget !== null && 
+            (Math.abs(noteBounds.top - horizontalSnapTarget) < 1 ||
+             Math.abs(noteBounds.bottom - horizontalSnapTarget) < 1 ||
+             Math.abs(noteBounds.centerY - horizontalSnapTarget) < 1)) {
           minX = Math.min(minX, noteBounds.left);
           maxX = Math.max(maxX, noteBounds.right);
         }
@@ -182,9 +183,10 @@ export class AlignmentService {
         };
         
         // 檢查是否在同一垂直線上
-        if (Math.abs(noteBounds.left - verticalSnapTarget) < 1 ||
-            Math.abs(noteBounds.right - verticalSnapTarget) < 1 ||
-            Math.abs(noteBounds.centerX - verticalSnapTarget) < 1) {
+        if (verticalSnapTarget !== null &&
+            (Math.abs(noteBounds.left - verticalSnapTarget) < 1 ||
+             Math.abs(noteBounds.right - verticalSnapTarget) < 1 ||
+             Math.abs(noteBounds.centerX - verticalSnapTarget) < 1)) {
           minY = Math.min(minY, noteBounds.top);
           maxY = Math.max(maxY, noteBounds.bottom);
         }

@@ -77,6 +77,7 @@ export interface AIPreviewData {
       to: string;
       reason: string;
     }>;
+    targetNote?: string;
   };
   onApply: () => void;
   onReject: () => void;

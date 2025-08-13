@@ -144,7 +144,7 @@ export class AIService {
       // 收集關鍵上下文
       const parentNodes = incomingConnections.slice(0, 2).map(c => c.note.content);
       const childNodes = outgoingConnections.slice(0, 3).map(c => c.note.content);
-      const siblingNodes = [];
+      const siblingNodes: string[] = [];
       
       console.log('🔗 Connected Nodes:');
       console.log('  - Parent Nodes:', parentNodes);
@@ -395,7 +395,7 @@ ${treeStructure}
       console.log('🎉 === END RESPONSE ===\n');
       
       // 解析回應 - 更智能的解析
-      const allLines = result.split('\n').map(line => line.trim());
+      const allLines = result.split('\n').map((line: string) => line.trim());
       const parsedLines: string[] = [];
       let foundConceptStart = false;
       

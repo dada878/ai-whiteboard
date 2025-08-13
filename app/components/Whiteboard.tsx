@@ -83,6 +83,10 @@ const Whiteboard: React.FC = () => {
     layout?: unknown[];
     newGroups?: unknown[];
     removeSuggestions?: unknown[];
+    targetNote?: unknown;
+    childNotes?: unknown[];
+    targetArea?: unknown;
+    targetNotes?: unknown[];
   } | null>(null);
   
   // AI loading 狀態管理
@@ -2699,7 +2703,16 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         title: '🤖 AI 生成便利貼預覽',
         description: '以下是 AI 根據現有內容生成的新便利貼，您可以查看實際效果並決定是否套用。',
         preview: {
-          notes: result.notes
+          notes: result.notes.map((note, index) => ({
+            id: `ai-note-${Date.now()}-${index}`,
+            content: note.content,
+            x: note.x,
+            y: note.y,
+            width: 200,
+            height: 150,
+            shape: 'rectangle',
+            color: note.color
+          }))
         },
         onApply: () => {
           // 創建新便利貼
@@ -2832,7 +2845,10 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
       const result = await aiService.smartOrganize(whiteboardData);
       
       // 保存結果
-      setPendingAIResult(result);
+      setPendingAIResult({
+        type: 'organize',
+        ...result
+      });
       
       // 設置預覽數據
       setAIPreviewData({
@@ -2841,9 +2857,25 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         description: '以下是 AI 對白板內容的整理建議',
         preview: {
           reason: result.reason,
-          layout: result.layout,
-          newGroups: result.newGroups,
-          removeSuggestions: result.removeSuggestions
+          layout: result.layout.map(item => ({
+            id: item.noteId,
+            x: item.newX,
+            y: item.newY
+          })),
+          newGroups: result.newGroups.map(group => ({
+            name: group.name,
+            description: `包含 ${group.noteIds.length} 個便利貼`,
+            noteIds: group.noteIds,
+            reason: '智能分組'
+          })),
+          removeSuggestions: result.removeSuggestions.map(noteId => {
+            const note = whiteboardData.notes.find(n => n.id === noteId);
+            return {
+              id: noteId,
+              content: note?.content || '',
+              reason: '建議移除以簡化結構'
+            };
+          })
         },
         onApply: () => {
           if (!pendingAIResult) return;
@@ -2852,7 +2884,8 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
           
           // 批次更新便利貼位置
           const updatedNotes = whiteboardData.notes.map(note => {
-            const newPosition = pendingAIResult.layout.find(l => l.noteId === note.id);
+            const layout = pendingAIResult.layout as Array<{ noteId: string; newX: number; newY: number }> | undefined;
+            const newPosition = layout?.find(l => l.noteId === note.id);
             if (newPosition) {
               return {
                 ...note,
@@ -2864,12 +2897,13 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
           });
           
           // 更新群組
-          const updatedGroups = [...(whiteboardData.groups || []), ...pendingAIResult.newGroups];
+          const newGroups = (pendingAIResult.newGroups || []) as Group[];
+          const updatedGroups = [...(whiteboardData.groups || []), ...newGroups];
           
           // 移除建議的冗餘便利貼（如果有）
-          if (pendingAIResult.removeSuggestions.length > 0) {
+          if (pendingAIResult.removeSuggestions && pendingAIResult.removeSuggestions.length > 0) {
             const filteredNotes = updatedNotes.filter(note => 
-              !pendingAIResult.removeSuggestions.includes(note.id)
+              !pendingAIResult.removeSuggestions?.includes(note.id)
             );
             updateWhiteboardData({
               ...whiteboardData,
@@ -2884,7 +2918,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
             });
           }
           
-          setAiResult(`✅ 智能整理完成！\n\n${pendingAIResult.reason}\n\n調整項目: ${pendingAIResult.layout.length}個\n新群組: ${pendingAIResult.newGroups.length}個\n建議移除: ${pendingAIResult.removeSuggestions.length}個`);
+          setAiResult(`✅ 智能整理完成！\n\n${pendingAIResult.reason}\n\n調整項目: ${pendingAIResult.layout?.length || 0}個\n新群組: ${pendingAIResult.newGroups?.length || 0}個\n建議移除: ${pendingAIResult.removeSuggestions?.length || 0}個`);
           setPendingAIResult(null);
         },
         onReject: () => {
@@ -3360,42 +3394,6 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         currentProject={currentProject}
         syncStatus={syncStatus}
         aiLoadingStates={aiLoadingStates}
-        onProjectClick={() => setShowProjectDialog(true)}
-        onProjectSelect={(projectId) => {
-          // 切換專案
-          ProjectService.setCurrentProject(projectId);
-          setCurrentProjectId(projectId);
-          
-          // 載入新專案資料
-          const projectData = ProjectService.loadProjectData(projectId);
-            
-          if (projectData) {
-            setWhiteboardData(projectData);
-            if (projectData.viewport) {
-              setZoomLevel(projectData.viewport.zoomLevel);
-              setPanOffset(projectData.viewport.panOffset);
-            } else {
-              // 重置縮放和平移
-              setZoomLevel(1);
-              setPanOffset({ x: 0, y: 0 });
-            }
-          } else {
-            // 如果沒有資料，初始化空白板
-            setWhiteboardData({ notes: [], edges: [], groups: [] });
-            // 重置縮放和平移
-            setZoomLevel(1);
-            setPanOffset({ x: 0, y: 0 });
-          }
-          
-          // 更新當前專案資訊
-          const projects = ProjectService.getAllProjects();
-          const project = projects.find(p => p.id === projectId);
-          setCurrentProject(project || null);
-          
-          // 重置歷史記錄
-          setHistory([projectData || { notes: [], edges: [], groups: [] }]);
-          setHistoryIndex(0);
-        }}
         onProjectCreate={(name, description) => {
           // 創建新專案並切換到它
           const newProject = ProjectService.createProject(name, description);
@@ -3526,7 +3524,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
               width: noteData.width || 150,
               height: noteData.height || 100,
               color: noteData.color || '#FEF3C7',
-              groupId: null
+              groupId: undefined
             } as StickyNote;
           });
           
@@ -3544,23 +3542,23 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
               id: newGroupId,
               name: groupData.name || '未命名群組',
               noteIds: [],
-              x: groupData.x || 0,
-              y: groupData.y || 0,
-              width: groupData.width || 200,
-              height: groupData.height || 200,
-              color: groupData.color || '#F3F4F6'
+              color: groupData.color || '#F3F4F6',
+              createdAt: new Date()
             };
             
-            // 將在群組範圍內的便利貼加入群組
-            newNotes.forEach(note => {
-              if (note.x >= newGroup.x && 
-                  note.x + note.width <= newGroup.x + newGroup.width &&
-                  note.y >= newGroup.y && 
-                  note.y + note.height <= newGroup.y + newGroup.height) {
-                newGroup.noteIds.push(note.id);
-                note.groupId = newGroupId;
-              }
-            });
+            // 將便利貼加入群組（根據原始模板的 noteIds）
+            if (groupData.noteIds) {
+              groupData.noteIds.forEach(oldNoteId => {
+                const newNoteId = idMap.get(oldNoteId);
+                if (newNoteId) {
+                  const note = newNotes.find(n => n.id === newNoteId);
+                  if (note) {
+                    note.groupId = newGroupId;
+                    newGroup.noteIds.push(newNoteId);
+                  }
+                }
+              });
+            }
             
             return newGroup;
           }) || [];
