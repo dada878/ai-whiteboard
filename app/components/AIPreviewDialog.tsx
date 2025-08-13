@@ -7,7 +7,77 @@ export interface AIPreviewData {
   type: 'group' | 'generate' | 'connect' | 'organize' | 'converge';
   title: string;
   description: string;
-  preview: any; // 預覽數據，根據不同類型有不同結構
+  preview: {
+    groups?: Array<{
+      name: string;
+      color: string;
+      noteIds: string[];
+    }>;
+    notes?: Array<{
+      id: string;
+      content: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      shape: string;
+      color?: string;
+    }>;
+    connections?: Array<{
+      from: string;
+      to: string;
+      label?: string;
+      type?: string;
+    }>;
+    patterns?: Array<{
+      name: string;
+      description: string;
+      noteIds: string[];
+    }>;
+    themes?: Array<{
+      theme: string;
+      points: string[];
+      noteIds: string[];
+    }>;
+    ungrouped?: string[];
+    reason?: string;
+    edges?: Array<{
+      from: string;
+      to: string;
+      label?: string;
+      type?: string;
+      weight?: number;
+      fromNote?: { content: string };
+      toNote?: { content: string };
+    }>;
+    layout?: Array<{ id: string; x: number; y: number }>;
+    newGroups?: Array<{
+      name: string;
+      description: string;
+      noteIds: string[];
+      reason: string;
+    }>;
+    removeSuggestions?: Array<{ id: string; content: string; reason: string }>;
+    analysis?: string;
+    originalCount?: number;
+    keepCount?: number;
+    mergeCount?: number;
+    removeCount?: number;
+    keepNodes?: Array<{
+      content: string;
+      importance: number;
+      reason: string;
+    }>;
+    removeNodes?: Array<{
+      content: string;
+      reason: string;
+    }>;
+    mergeNodes?: Array<{
+      from: string[];
+      to: string;
+      reason: string;
+    }>;
+  };
   onApply: () => void;
   onReject: () => void;
   onRegenerate: () => void;
@@ -33,7 +103,7 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
       case 'group':
         return (
           <div className="space-y-3">
-            {previewData.preview.groups?.map((group: any, index: number) => (
+            {previewData.preview.groups?.map((group, index) => (
               <div
                 key={index}
                 className={`p-4 rounded-lg border ${
@@ -59,11 +129,11 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
                 <p className={`text-sm ${
                   isDarkMode ? 'text-dark-text-secondary' : 'text-gray-600'
                 }`}>
-                  {group.reason}
+                  {(group as { reason?: string }).reason}
                 </p>
               </div>
             ))}
-            {previewData.preview.ungrouped?.length > 0 && (
+            {previewData.preview.ungrouped && previewData.preview.ungrouped.length > 0 && (
               <div className={`text-sm ${
                 isDarkMode ? 'text-dark-text-secondary' : 'text-gray-600'
               }`}>
@@ -86,7 +156,7 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
                 便利貼預覽
               </h4>
               <div className="flex flex-wrap gap-4">
-                {previewData.preview.notes?.map((note: any, index: number) => (
+                {previewData.preview.notes?.map((note, index) => (
                   <div
                     key={index}
                     className="relative"
@@ -126,7 +196,7 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
               }`}>
                 生成理由
               </h4>
-              {previewData.preview.notes?.map((note: any, index: number) => (
+              {previewData.preview.notes?.map((note, index) => (
                 <div
                   key={index}
                   className={`p-3 rounded-lg text-sm ${
@@ -134,7 +204,7 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
                   }`}
                 >
                   <span className="font-medium">{note.content}：</span>
-                  <span className="ml-2">{note.reason}</span>
+                  <span className="ml-2">{(note as { reason?: string }).reason}</span>
                 </div>
               ))}
             </div>
@@ -156,7 +226,7 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
               <div className="relative" style={{ minHeight: '200px' }}>
                 {/* 簡化的視覺化表示 */}
                 <div className="flex flex-wrap gap-8 justify-center items-center">
-                  {previewData.preview.edges?.slice(0, 3).map((edge: any, index: number) => (
+                  {previewData.preview.edges?.slice(0, 3).map((edge, index) => (
                     <div key={index} className="flex items-center gap-4">
                       <div
                         className="px-4 py-2 rounded-lg text-sm font-medium shadow-sm"
@@ -165,7 +235,7 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
                           color: '#333'
                         }}
                       >
-                        {edge.fromContent}
+                        {(edge as { fromContent?: string }).fromContent}
                       </div>
                       <svg width="40" height="20" className="flex-shrink-0">
                         <defs>
@@ -200,12 +270,12 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
                           color: '#333'
                         }}
                       >
-                        {edge.toContent}
+                        {(edge as { toContent?: string }).toContent}
                       </div>
                     </div>
                   ))}
                 </div>
-                {previewData.preview.edges?.length > 3 && (
+                {previewData.preview.edges && previewData.preview.edges.length > 3 && (
                   <p className={`text-center mt-4 text-sm ${
                     isDarkMode ? 'text-dark-text-secondary' : 'text-gray-600'
                   }`}>
@@ -222,7 +292,7 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
               }`}>
                 連線詳情
               </h4>
-              {previewData.preview.edges?.map((edge: any, index: number) => (
+              {previewData.preview.edges?.map((edge, index) => (
                 <div
                   key={index}
                   className={`p-3 rounded-lg border ${
@@ -232,31 +302,33 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
                   <div className={`flex items-center gap-2 mb-1 text-sm ${
                     isDarkMode ? 'text-dark-text' : 'text-gray-800'
                   }`}>
-                    <span className="font-medium">{edge.fromContent}</span>
+                    <span className="font-medium">{(edge as { fromContent?: string }).fromContent || edge.fromNote?.content || edge.from}</span>
                     <span>→</span>
-                    <span className="font-medium">{edge.toContent}</span>
+                    <span className="font-medium">{(edge as { toContent?: string }).toContent || edge.toNote?.content || edge.to}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <p className={`text-xs ${
                       isDarkMode ? 'text-dark-text-secondary' : 'text-gray-600'
                     }`}>
-                      {edge.reason}
+                      {(edge as { reason?: string }).reason || edge.label || 'Connection'}
                     </p>
-                    <span className={`text-xs px-2 py-0.5 rounded ${
-                      edge.confidence > 0.8
-                        ? isDarkMode
-                          ? 'bg-green-900/30 text-green-400'
-                          : 'bg-green-100 text-green-700'
-                        : edge.confidence > 0.6
-                        ? isDarkMode
-                          ? 'bg-yellow-900/30 text-yellow-400'
-                          : 'bg-yellow-100 text-yellow-700'
-                        : isDarkMode
-                        ? 'bg-red-900/30 text-red-400'
-                        : 'bg-red-100 text-red-700'
-                    }`}>
-                      {Math.round(edge.confidence * 100)}%
-                    </span>
+                    {(edge as { confidence?: number }).confidence && (
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        (edge as { confidence?: number }).confidence! > 0.8
+                          ? isDarkMode
+                            ? 'bg-green-900/30 text-green-400'
+                            : 'bg-green-100 text-green-700'
+                          : (edge as { confidence?: number }).confidence! > 0.6
+                          ? isDarkMode
+                            ? 'bg-yellow-900/30 text-yellow-400'
+                            : 'bg-yellow-100 text-yellow-700'
+                          : isDarkMode
+                          ? 'bg-red-900/30 text-red-400'
+                          : 'bg-red-100 text-red-700'
+                      }`}>
+                        {Math.round((edge as { confidence?: number }).confidence! * 100)}%
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -330,14 +402,14 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
             </div>
 
             {/* 新群組詳情 */}
-            {previewData.preview.newGroups?.length > 0 && (
+            {previewData.preview.newGroups && previewData.preview.newGroups.length > 0 && (
               <div className="space-y-2">
                 <h5 className={`text-sm font-medium ${
                   isDarkMode ? 'text-dark-text' : 'text-gray-700'
                 }`}>
                   新群組建議
                 </h5>
-                {previewData.preview.newGroups.map((group: any, index: number) => (
+                {previewData.preview.newGroups.map((group, index) => (
                   <div
                     key={index}
                     className={`p-3 rounded-lg border ${
@@ -347,7 +419,7 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
                     <div className="flex items-center gap-2 mb-1">
                       <span
                         className="w-3 h-3 rounded"
-                        style={{ backgroundColor: group.color }}
+                        style={{ backgroundColor: (group as { color?: string }).color }}
                       />
                       <span className={`font-medium text-sm ${
                         isDarkMode ? 'text-dark-text' : 'text-gray-800'
@@ -366,7 +438,7 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
             )}
 
             {/* 移除建議 */}
-            {previewData.preview.removeSuggestions?.length > 0 && (
+            {previewData.preview.removeSuggestions && previewData.preview.removeSuggestions.length > 0 && (
               <div className={`p-3 rounded-lg border-2 border-red-200 ${
                 isDarkMode ? 'bg-red-900/20' : 'bg-red-50'
               }`}>
@@ -457,7 +529,7 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
               }`}>
                 ✅ 保留的核心項目
               </h5>
-              {previewData.preview.keepNodes?.map((node: any, index: number) => (
+              {previewData.preview.keepNodes?.map((node, index) => (
                 <div
                   key={index}
                   className={`p-3 rounded-lg border-2 ${
@@ -486,14 +558,14 @@ const AIPreviewDialog: React.FC<AIPreviewDialogProps> = ({
             </div>
 
             {/* 建議移除的項目 */}
-            {previewData.preview.removeNodes?.length > 0 && (
+            {previewData.preview.removeNodes && previewData.preview.removeNodes.length > 0 && (
               <div className="space-y-3">
                 <h5 className={`text-sm font-medium ${
                   isDarkMode ? 'text-dark-text' : 'text-gray-700'
                 }`}>
                   ❌ 建議移除的項目
                 </h5>
-                {previewData.preview.removeNodes.map((node: any, index: number) => (
+                {previewData.preview.removeNodes.map((node, index) => (
                   <div
                     key={index}
                     className={`p-3 rounded-lg border ${

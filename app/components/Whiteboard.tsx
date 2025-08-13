@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import type { AIPreviewData } from './AIPreviewDialog';
 import { v4 as uuidv4 } from 'uuid';
 import { StickyNote, Edge, Group, WhiteboardData, NetworkAnalysis, NetworkConnection, Project } from '../types';
 import StickyNoteComponent from './StickyNote';
@@ -74,7 +75,7 @@ const Whiteboard: React.FC = () => {
   const [cloudSyncEnabled, setCloudSyncEnabled] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncService.getSyncStatus());
   const [showAIPreview, setShowAIPreview] = useState(false);
-  const [aiPreviewData, setAIPreviewData] = useState<any>(null);
+  const [aiPreviewData, setAIPreviewData] = useState<AIPreviewData | null>(null);
   const [pendingAIResult, setPendingAIResult] = useState<any>(null);
   
   // AI loading 狀態管理
@@ -210,7 +211,8 @@ const Whiteboard: React.FC = () => {
         notes: prev.notes.filter(note => !notesToDelete.includes(note.id)),
         edges: prev.edges.filter(edge => 
           !notesToDelete.includes(edge.from) && !notesToDelete.includes(edge.to)
-        )
+        ),
+        groups: prev.groups
       }));
       
       setSelectedNotes([]);
@@ -655,13 +657,8 @@ const Whiteboard: React.FC = () => {
       maxY = Math.max(maxY, note.y + note.height);
     });
 
-    // 計算所有群組的邊界
-    whiteboardData.groups?.forEach(group => {
-      minX = Math.min(minX, group.x);
-      minY = Math.min(minY, group.y);
-      maxX = Math.max(maxX, group.x + group.width);
-      maxY = Math.max(maxY, group.y + group.height);
-    });
+    // Groups don't have x, y, width, height properties in the type definition
+    // So we skip groups for bounds calculation
 
     return {
       x: minX,
@@ -1827,7 +1824,7 @@ const Whiteboard: React.FC = () => {
     console.log('Total lines to parse:', lines.length);
     
     // 解析不同格式的回答
-    let currentSection = '';
+    const currentSection = '';
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -1869,7 +1866,7 @@ const Whiteboard: React.FC = () => {
       // 檢測不同層級的子彈列表
       // 根據縮排判斷層級
       let bulletLevel = 1;
-      let cleanedLine = trimmed;
+      const cleanedLine = trimmed;
       
       // 檢測縮排層級
       const indentMatch = line.match(/^(\s*)/);
@@ -2058,43 +2055,78 @@ const Whiteboard: React.FC = () => {
           levels.get(node.level)!.push(node);
         });
         
-        // 創建主節點（連接到源便利貼）
-        const mainNodeId = uuidv4();
-        const mainNode = parsedNodes.find(n => n.isMain) || parsedNodes[0];
+        // 判斷是否有主節點，如果沒有就創建一個
+        let mainNodeId: string;
+        const hasMainNode = parsedNodes.some(n => n.isMain);
         
-        newNotes.push({
-          id: mainNodeId,
-          x: targetX,
-          y: targetY,
-          width: NOTE_SIZE + 20,  // 主節點稍大
-          height: NOTE_SIZE + 20,
-          content: mainNode.content,
-          color: '#E0E7FF' // 主節點用藍色系
-        });
-        
-        // 連接源節點到主節點
-        sourceNoteIds.forEach(sourceId => {
-          newEdges.push({
-            id: uuidv4(),
-            from: sourceId,
-            to: mainNodeId
+        if (!hasMainNode) {
+          // 如果沒有明確的主節點，創建一個總結節點
+          mainNodeId = uuidv4();
+          newNotes.push({
+            id: mainNodeId,
+            x: targetX,
+            y: targetY,
+            width: NOTE_SIZE,
+            height: NOTE_SIZE,
+            content: '回答摘要',
+            color: '#E0E7FF' // 主節點用藍色系
           });
-        });
-        
-        // 創建子節點
-        const level1Nodes = parsedNodes.filter(n => n.level === 1 && n !== mainNode);
-        const level2Nodes = parsedNodes.filter(n => n.level === 2);
-        
-        // 佈局第一層節點（扇形展開）
-        if (level1Nodes.length > 0) {
-          const angleSpread = Math.min(Math.PI * 2/3, (Math.PI / 4) * level1Nodes.length);
-          const startAngle = Math.PI / 2 - angleSpread / 2; // 向下為主
-          const angleStep = level1Nodes.length > 1 ? angleSpread / (level1Nodes.length - 1) : 0;
           
-          level1Nodes.forEach((node, index) => {
+          // 連接源節點到主節點
+          sourceNoteIds.forEach(sourceId => {
+            newEdges.push({
+              id: uuidv4(),
+              from: sourceId,
+              to: mainNodeId
+            });
+          });
+        } else {
+          // 使用解析出的主節點
+          const mainNode = parsedNodes.find(n => n.isMain)!;
+          mainNodeId = uuidv4();
+          newNotes.push({
+            id: mainNodeId,
+            x: targetX,
+            y: targetY,
+            width: NOTE_SIZE,
+            height: NOTE_SIZE,
+            content: mainNode.content,
+            color: '#E0E7FF'
+          });
+          
+          sourceNoteIds.forEach(sourceId => {
+            newEdges.push({
+              id: uuidv4(),
+              from: sourceId,
+              to: mainNodeId
+            });
+          });
+        }
+        
+        // 建立層級結構，正確處理父子關係
+        const nodeMap = new Map<object, string>(); // 存儲節點對應的 ID
+        let lastLevel1NodeId: string | null = null; // 記錄最後一個 level 1 節點
+        
+        // 計算 level 1 節點的佈局
+        const level1Nodes = parsedNodes.filter(n => n.level === 1);
+        const angleSpread = Math.min(Math.PI * 2/3, (Math.PI / 4) * level1Nodes.length);
+        const startAngle = Math.PI / 2 - angleSpread / 2;
+        const angleStep = level1Nodes.length > 1 ? angleSpread / (level1Nodes.length - 1) : 0;
+        
+        let level1Index = 0;
+        
+        // 按順序處理所有節點
+        for (let i = 0; i < parsedNodes.length; i++) {
+          const node = parsedNodes[i];
+          
+          // 跳過已處理的主節點
+          if (node.isMain) continue;
+          
+          if (node.level === 1) {
+            // Level 1 節點：連接到主節點
             const nodeId = uuidv4();
-            const angle = startAngle + angleStep * index;
-            const radius = 200;
+            const angle = startAngle + angleStep * level1Index;
+            const radius = 250;
             
             newNotes.push({
               id: nodeId,
@@ -2103,40 +2135,62 @@ const Whiteboard: React.FC = () => {
               width: NOTE_SIZE,
               height: NOTE_SIZE,
               content: node.content,
-              color: '#FCE7F3' // 子節點用粉色系
+              color: '#FCE7F3' // Level 1 用粉色系
             });
             
-            // 連接主節點到子節點
             newEdges.push({
               id: uuidv4(),
               from: mainNodeId,
               to: nodeId
             });
             
-            // 如果有第二層節點，連接到對應的第一層節點
-            const relatedLevel2 = level2Nodes.splice(0, 1); // 取一個第二層節點
-            if (relatedLevel2.length > 0) {
-              const subNodeId = uuidv4();
-              const subAngle = angle + (Math.random() - 0.5) * 0.3; // 稍微偏移
-              const subRadius = 350;
+            nodeMap.set(node, nodeId);
+            lastLevel1NodeId = nodeId;
+            level1Index++;
+            
+          } else if (node.level === 2 && lastLevel1NodeId) {
+            // Level 2 節點：連接到最近的 level 1 節點
+            const parentNodeId = lastLevel1NodeId;
+            const nodeId = uuidv4();
+            
+            // 找出父節點的位置
+            const parentNote = newNotes.find(n => n.id === parentNodeId);
+            if (parentNote) {
+              // 計算相對於父節點的位置
+              const parentAngle = Math.atan2(parentNote.y - targetY, parentNote.x - targetX);
+              const subNodes = parsedNodes.filter((n, idx) => 
+                idx > i && n.level === 2 && 
+                parsedNodes.slice(i, idx).every(pn => pn.level >= 2)
+              );
+              
+              // 在父節點周圍扇形分布
+              const subIndex = parsedNodes.slice(0, i).filter(n => 
+                n.level === 2 && nodeMap.has(n)
+              ).length % 3; // 每個父節點最多3個子節點
+              
+              const offsetAngle = (subIndex - 1) * 0.3; // -0.3, 0, 0.3
+              const angle = parentAngle + offsetAngle;
+              const radius = 150; // 相對於父節點的距離
               
               newNotes.push({
-                id: subNodeId,
-                x: targetX + Math.cos(subAngle) * subRadius,
-                y: targetY + Math.sin(subAngle) * subRadius,
-                width: NOTE_SIZE - 20,  // 第二層稍小
-                height: NOTE_SIZE - 20,
-                content: relatedLevel2[0].content,
-                color: '#FEF3C7' // 第二層用黃色系
+                id: nodeId,
+                x: parentNote.x + Math.cos(angle) * radius,
+                y: parentNote.y + Math.sin(angle) * radius,
+                width: NOTE_SIZE,
+                height: NOTE_SIZE,
+                content: node.content,
+                color: '#FEF3C7' // Level 2 用黃色系
               });
               
               newEdges.push({
                 id: uuidv4(),
-                from: nodeId,
-                to: subNodeId
+                from: parentNodeId,
+                to: nodeId
               });
+              
+              nodeMap.set(node, nodeId);
             }
-          });
+          }
         }
         
         // 批量更新

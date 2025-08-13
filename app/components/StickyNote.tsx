@@ -697,7 +697,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
             >
               {isEditing ? (
                 <div
-                  ref={textareaRef as any}
+                  ref={textareaRef as unknown as React.RefObject<HTMLDivElement>}
                   contentEditable="true"
                   suppressContentEditableWarning={true}
                   onInput={(e) => {

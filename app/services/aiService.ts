@@ -138,8 +138,8 @@ export class AIService {
       console.log('  - All Related Notes:', allRelatedNotes.length);
       
       // 建立結構化的上下文
-      let contextInfo = '';
-      let brainstormType = '';
+      const contextInfo = '';
+      const brainstormType = '';
       
       // 收集關鍵上下文
       const parentNodes = incomingConnections.slice(0, 2).map(c => c.note.content);
@@ -676,7 +676,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
         const parsedResult = JSON.parse(convergenceResult);
         
         // 確保結果包含 ID
-        const keepNodes = parsedResult.keepNodes.map((node: any) => {
+        const keepNodes = parsedResult.keepNodes.map((node: { content: string; reason: string; importance?: number }) => {
           const matchedNote = childNotes.find(n => n.content === node.content);
           return {
             id: matchedNote?.id || '',
@@ -686,7 +686,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           };
         });
 
-        const removeNodes = parsedResult.removeNodes.map((node: any) => {
+        const removeNodes = parsedResult.removeNodes.map((node: { content: string; reason: string }) => {
           const matchedNote = childNotes.find(n => n.content === node.content);
           return {
             id: matchedNote?.id || '',
@@ -1154,7 +1154,7 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
   }
 
   async askWithContext(
-    networkAnalysis: any,
+    networkAnalysis: NetworkAnalysis,
     whiteboardData: WhiteboardData,
     userPrompt: string
   ): Promise<string> {
@@ -1472,7 +1472,7 @@ ${userPrompt}`;
         const baseX = targetArea?.x || 400;
         const baseY = targetArea?.y || 400;
         return {
-          notes: result.notes.map((note: any, index: number) => ({
+          notes: result.notes.map((note: { content: string; width?: number; height?: number; shape?: string; color?: string }, index: number) => ({
             ...note,
             x: baseX + (index % 3) * 220,
             y: baseY + Math.floor(index / 3) * 150

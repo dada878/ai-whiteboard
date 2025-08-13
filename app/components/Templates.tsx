@@ -71,11 +71,8 @@ const TEMPLATES: Template[] = [
           id: 'swot-group',
           name: 'SWOT',
           noteIds: [],
-          x: 150,
-          y: 150,
-          width: 650,
-          height: 350,
-          color: '#F3F4F6'
+          color: '#F3F4F6',
+          createdAt: new Date()
         }
       ]
     }
@@ -117,31 +114,22 @@ const TEMPLATES: Template[] = [
           id: 'todo-group',
           name: '待辦事項',
           noteIds: [],
-          x: 150,
-          y: 180,
-          width: 200,
-          height: 400,
-          color: '#FEE2E2'
+          color: '#FEE2E2',
+          createdAt: new Date()
         },
         { 
           id: 'doing-group',
           name: '進行中',
           noteIds: [],
-          x: 350,
-          y: 180,
-          width: 200,
-          height: 400,
-          color: '#FEF9C3'
+          color: '#FEF9C3',
+          createdAt: new Date()
         },
         { 
           id: 'done-group',
           name: '已完成',
           noteIds: [],
-          x: 550,
-          y: 180,
-          width: 200,
-          height: 400,
-          color: '#DCFCE7'
+          color: '#DCFCE7',
+          createdAt: new Date()
         }
       ]
     }
@@ -201,21 +189,15 @@ const TEMPLATES: Template[] = [
           id: 'pros-group',
           name: '優點',
           noteIds: [],
-          x: 200,
-          y: 320,
-          width: 200,
-          height: 250,
-          color: '#DCFCE7'
+          color: '#DCFCE7',
+          createdAt: new Date()
         },
         { 
           id: 'cons-group',
           name: '缺點',
           noteIds: [],
-          x: 500,
-          y: 320,
-          width: 200,
-          height: 250,
-          color: '#FEE2E2'
+          color: '#FEE2E2',
+          createdAt: new Date()
         }
       ]
     }
