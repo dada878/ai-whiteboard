@@ -76,7 +76,14 @@ const Whiteboard: React.FC = () => {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncService.getSyncStatus());
   const [showAIPreview, setShowAIPreview] = useState(false);
   const [aiPreviewData, setAIPreviewData] = useState<AIPreviewData | null>(null);
-  const [pendingAIResult, setPendingAIResult] = useState<any>(null);
+  const [pendingAIResult, setPendingAIResult] = useState<{
+    type: string;
+    result?: unknown;
+    reason?: string;
+    layout?: unknown[];
+    newGroups?: unknown[];
+    removeSuggestions?: unknown[];
+  } | null>(null);
   
   // AI loading 狀態管理
   const [aiLoadingStates, setAiLoadingStates] = useState<{
