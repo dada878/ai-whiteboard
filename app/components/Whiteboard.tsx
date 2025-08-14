@@ -2978,12 +2978,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
-          backgroundColor: isDarkMode ? '#1e1e1e' : 'white',
-          backgroundImage: isDarkMode 
-            ? 'radial-gradient(circle, #333333 1px, transparent 1px)'
-            : 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)',
-          backgroundSize: `${20 * zoomLevel}px ${20 * zoomLevel}px`,
-          backgroundPosition: `${panOffset.x % (20 * zoomLevel)}px ${panOffset.y % (20 * zoomLevel)}px`
+          backgroundColor: isDarkMode ? '#1e1e1e' : 'white'
         }}
       >
         {/* 畫布使用提示 */}
@@ -3013,7 +3008,12 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
             minWidth: '20000px',
             minHeight: '20000px',
             transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) scale(${zoomLevel})`,
-            transformOrigin: '0 0'
+            transformOrigin: '0 0',
+            backgroundImage: isDarkMode 
+              ? 'radial-gradient(circle, #333333 1px, transparent 1px)'
+              : 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)',
+            backgroundSize: '20px 20px',
+            backgroundPosition: '0 0'
           }}
         >
           {/* SVG 用於繪製連線 */}
