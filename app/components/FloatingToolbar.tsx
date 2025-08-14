@@ -250,6 +250,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   >
                     <span>🔍</span>
                     <span>分析選取區域</span>
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                      isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                    } font-semibold`}>BETA</span>
                   </button>
                   <button
                     onClick={() => {
@@ -264,6 +267,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   >
                     <span>✨</span>
                     <span>改進建議</span>
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                      isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                    } font-semibold`}>BETA</span>
                   </button>
                   <button
                     onClick={() => {
@@ -295,6 +301,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   >
                     <span>📊</span>
                     <span>SWOT 分析</span>
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                      isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                    } font-semibold`}>BETA</span>
                   </button>
                   <button
                     onClick={() => {
@@ -332,20 +341,6 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   </button>
                   <button
                     onClick={() => {
-                      onAIAskSelection?.();
-                      setShowAISelectionMenu(false);
-                    }}
-                    className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 font-medium ${
-                      isDarkMode 
-                        ? 'hover:bg-cyan-900/30 hover:text-cyan-400 text-gray-300' 
-                        : 'hover:bg-cyan-50 hover:text-cyan-700 text-gray-700'
-                    }`}
-                  >
-                    <span>💬</span>
-                    <span>詢問 AI</span>
-                  </button>
-                  <button
-                    onClick={() => {
                       onAIConvergeNodes?.();
                       setShowAISelectionMenu(false);
                     }}
@@ -357,6 +352,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   >
                     <span>🎯</span>
                     <span>收斂節點</span>
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                      isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                    } font-semibold`}>BETA</span>
                   </button>
                 </div>
               )}
@@ -449,6 +447,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                     >
                       <span>📁</span>
                       <span>AI 自動分組</span>
+                      <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                        isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                      } font-semibold`}>BETA</span>
                     </button>
                     <button
                       onClick={() => {
@@ -463,6 +464,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                     >
                       <span>✨</span>
                       <span>AI 生成便利貼</span>
+                      <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                        isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                      } font-semibold`}>BETA</span>
                     </button>
                     <button
                       onClick={() => {

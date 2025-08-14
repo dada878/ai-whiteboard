@@ -2975,7 +2975,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
   }, [whiteboardData]);
 
   return (
-    <div className={`flex h-screen ${isDarkMode ? 'bg-dark-bg' : 'bg-white'}`}>
+    <div className={`flex h-full ${isDarkMode ? 'bg-dark-bg' : 'bg-white'}`}>
       {/* 白板畫布 */}
       <div 
         id="whiteboard-canvas"
@@ -2994,14 +2994,20 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
-          backgroundColor: isDarkMode ? '#1e1e1e' : 'white',
-          backgroundImage: isDarkMode 
-            ? 'radial-gradient(circle, #333333 1px, transparent 1px)'
-            : 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)',
-          backgroundSize: `${20 * zoomLevel}px ${20 * zoomLevel}px`,
-          backgroundPosition: `${panOffset.x % (20 * zoomLevel)}px ${panOffset.y % (20 * zoomLevel)}px`
+          backgroundColor: isDarkMode ? '#1e1e1e' : 'white'
         }}
       >
+        {/* 無限背景點點層 */}
+        <div 
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: isDarkMode 
+              ? `radial-gradient(circle, #333333 ${1 * zoomLevel}px, transparent ${1 * zoomLevel}px)`
+              : `radial-gradient(circle, #e5e7eb ${1 * zoomLevel}px, transparent ${1 * zoomLevel}px)`,
+            backgroundSize: `${20 * zoomLevel}px ${20 * zoomLevel}px`,
+            backgroundPosition: `${panOffset.x % (20 * zoomLevel)}px ${panOffset.y % (20 * zoomLevel)}px`
+          }}
+        />
         {/* 畫布使用提示 */}
         {whiteboardData.notes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -3022,15 +3028,13 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         <div 
           ref={containerRef}
           data-canvas-background
-          className="absolute"
+          className="relative"
           style={{
             // 使用超大的尺寸來模擬無限空間
-            top: '-50000px',
-            left: '-50000px',
-            width: '100000px',
-            height: '100000px',
+            width: '50000px',
+            height: '50000px',
             transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) scale(${zoomLevel})`,
-            transformOrigin: '50000px 50000px',
+            transformOrigin: '0 0',
             willChange: 'transform'
           }}
         >
@@ -3038,10 +3042,11 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
           <svg 
             className="absolute z-10"
             style={{
+              position: 'absolute',
               top: 0,
               left: 0,
-              width: '100000px',
-              height: '100000px',
+              width: '50000px',
+              height: '50000px',
               overflow: 'visible'
             }}
           >
