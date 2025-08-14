@@ -3396,6 +3396,40 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         currentProject={currentProject}
         syncStatus={syncStatus}
         aiLoadingStates={aiLoadingStates}
+        onProjectSelect={(projectId) => {
+          // 切換專案
+          const project = ProjectService.getProject(projectId);
+          if (project) {
+            // 儲存當前專案的資料
+            if (currentProjectId) {
+              ProjectService.saveProjectData(currentProjectId, whiteboardData);
+            }
+            
+            // 切換到新專案
+            ProjectService.setCurrentProject(projectId);
+            setCurrentProjectId(projectId);
+            setCurrentProject(project);
+            
+            // 載入新專案的資料
+            const projectData = ProjectService.loadProjectData(projectId);
+            if (projectData) {
+              setWhiteboardData(projectData);
+              // 重置歷史記錄
+              setHistory([projectData]);
+              setHistoryIndex(0);
+            } else {
+              const emptyData = { notes: [], edges: [], groups: [] };
+              setWhiteboardData(emptyData);
+              setHistory([emptyData]);
+              setHistoryIndex(0);
+            }
+            
+            // 重置視圖
+            setZoomLevel(1);
+            setPanOffset({ x: 0, y: 0 });
+            setAiResult('');
+          }
+        }}
         onProjectCreate={(name, description) => {
           // 創建新專案並切換到它
           const newProject = ProjectService.createProject(name, description);

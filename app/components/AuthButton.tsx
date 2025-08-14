@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
 import { useTheme } from '../contexts/ThemeContext';
+import EditNameDialog from './EditNameDialog';
 
 interface AuthButtonProps {
   onShowPlusWelcome?: () => void;
@@ -13,6 +14,7 @@ export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) 
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const { isDarkMode } = useTheme();
   const [showMenu, setShowMenu] = useState(false);
+  const [showEditName, setShowEditName] = useState(false);
 
   if (loading) {
     return (
@@ -86,9 +88,22 @@ export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) 
               <div className="text-xs opacity-60 truncate">{user.email}</div>
             )}
             {user?.isPlus ? (
-              <div className="mt-1 text-xs inline-flex items-center gap-1 text-yellow-500">
-                <span>⭐</span>
-                <span>Plus 會員</span>
+              <div className="mt-2">
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold shadow-sm ring-1 ring-amber-300/60 bg-gradient-to-r from-yellow-400 to-amber-500 ${
+                    isDarkMode ? 'text-amber-900' : 'text-yellow-900'
+                  }`}
+                >
+                  <svg
+                    className="w-3.5 h-3.5"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l2.02 6.188a1 1 0 00.95.69h6.508c.969 0 1.371 1.24.588 1.81l-5.267 3.825a1 1 0 00-.364 1.118l2.02 6.188c.3.921-.755 1.688-1.538 1.118l-5.267-3.825a1 1 0 00-1.176 0l-5.267 3.825c-.783.57-1.838-.197-1.539-1.118l2.02-6.188a1 1 0 00-.364-1.118L.983 11.615c-.783-.57-.38-1.81.588-1.81h6.508a1 1 0 00.95-.69l2.02-6.188z" />
+                  </svg>
+                  <span>Plus 會員</span>
+                </span>
               </div>
             ) : (
               <a
@@ -102,31 +117,48 @@ export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) 
               </a>
             )}
           </div>
+
+          <div className="py-1">
+            {/* 修改名稱選項 */}
+            <button
+              onClick={() => {
+                setShowEditName(true);
+                setShowMenu(false);
+              }}
+              className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                isDarkMode 
+                  ? 'hover:bg-dark-bg-tertiary text-dark-text' 
+                  : 'hover:bg-gray-100 text-gray-700'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <span>✏️</span>
+                <span>修改名稱</span>
+              </span>
+            </button>
+            
+            {/* Plus 會員專屬選項 */}
+            {user?.isPlus && onShowPlusWelcome && (
+              <button
+                onClick={() => {
+                  onShowPlusWelcome();
+                  setShowMenu(false);
+                }}
+                className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                  isDarkMode 
+                    ? 'hover:bg-dark-bg-tertiary text-dark-text' 
+                    : 'hover:bg-gray-100 text-gray-700'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span>🎉</span>
+                  <span>查看 Plus 會員權益</span>
+                </span>
+              </button>
+            )}
+          </div>
           
-          {/* Plus 會員專屬選項 */}
-          {user?.isPlus && onShowPlusWelcome && (
-            <>
-              <div className="py-1">
-                <button
-                  onClick={() => {
-                    onShowPlusWelcome();
-                    setShowMenu(false);
-                  }}
-                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                    isDarkMode 
-                      ? 'hover:bg-dark-bg-tertiary text-dark-text' 
-                      : 'hover:bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span>🎉</span>
-                    <span>查看 Plus 會員權益</span>
-                  </span>
-                </button>
-              </div>
-              <div className={`border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`} />
-            </>
-          )}
+          <div className={`border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`} />
           
           <div className="py-1">
             <button
@@ -145,6 +177,16 @@ export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) 
           </div>
         </div>
       )}
+      <EditNameDialog
+        isOpen={showEditName}
+        defaultName={user?.name || ''}
+        onClose={(updated) => {
+          setShowEditName(false);
+          if (updated) {
+            window.location.reload();
+          }
+        }}
+      />
     </div>
   );
 }
