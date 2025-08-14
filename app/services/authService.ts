@@ -5,6 +5,8 @@ export interface User {
   email?: string | null;
   name?: string | null;
   image?: string | null;
+  plan?: 'free' | 'plus';
+  isPlus?: boolean;
 }
 
 export class AuthService {
@@ -89,6 +91,8 @@ export class AuthService {
         email: session.user.email,
         name: session.user.name,
         image: session.user.image,
+        plan: (session.user as { plan?: 'free' | 'plus' }).plan,
+        isPlus: Boolean((session.user as { isPlus?: boolean }).isPlus)
       };
     } catch (error) {
       console.error('Get current user error:', error);

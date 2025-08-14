@@ -26,6 +26,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: session.user.email,
     name: session.user.name,
     image: session.user.image,
+    plan: (session.user as { plan?: 'free' | 'plus' }).plan,
+    isPlus: Boolean((session.user as { isPlus?: boolean }).isPlus)
   } : null;
 
   const signInWithGoogle = async () => {

@@ -13,7 +13,8 @@ npm run lint     # Run ESLint
 ```
 
 ### Git Workflow
-定期 git commit
+- 每次比較大的改動完成後，在 git commit 之前執行 `npm run lint` 確認沒有重大 lint error
+- 定期 git commit
 
 ## Architecture Overview
 

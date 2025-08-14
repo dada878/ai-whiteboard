@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import AuthButton from './AuthButton';
 import { Project } from '../types';
 import { SyncStatus } from '../services/syncService';
 import { ProjectService } from '../services/projectService';
@@ -149,55 +148,52 @@ const SidePanel: React.FC<SidePanelProps> = ({
         </button>
       ) : (
         <div className="h-full flex flex-col">
-          {/* 標題欄 */}
+          {/* 頂部標題 + 分頁 + 收合，合併為單一列 */}
           <div className={`border-b ${
             isDarkMode ? 'border-gray-600' : 'border-gray-200'
           }`}>
-            <div className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-4">
-                <AuthButton />
+            <div className="flex items-center justify-between px-3">
+              {/* 分頁標籤 */}
+              <div className="flex flex-1">
+                <button
+                  onClick={() => setActiveTab('project')}
+                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                    activeTab === 'project'
+                      ? isDarkMode
+                        ? 'text-blue-500 border-blue-900'
+                        : 'text-blue-600 border-blue-600'
+                      : isDarkMode
+                        ? 'text-dark-text-secondary border-transparent hover:text-dark-text'
+                        : 'text-gray-500 border-transparent hover:text-gray-700'
+                  }`}
+                >
+                  專案
+                </button>
+                <button
+                  onClick={() => setActiveTab('ai')}
+                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                    activeTab === 'ai'
+                      ? isDarkMode
+                        ? 'text-blue-500 border-blue-900'
+                        : 'text-blue-600 border-blue-600'
+                      : isDarkMode
+                        ? 'text-dark-text-secondary border-transparent hover:text-dark-text'
+                        : 'text-gray-500 border-transparent hover:text-gray-700'
+                  }`}
+                >
+                  AI 結果
+                </button>
               </div>
               <button
                 onClick={() => setIsCollapsed(true)}
-                className={`transition-colors ${
+                className={`ml-2 px-2 py-2 rounded transition-colors ${
                   isDarkMode 
-                    ? 'text-gray-400 hover:text-gray-200' 
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'text-gray-400 hover:text-gray-200 hover:bg-dark-bg-tertiary' 
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                 }`}
+                title="收合側欄"
               >
                 ▶
-              </button>
-            </div>
-            
-            {/* 分頁標籤 */}
-            <div className="flex">
-              <button
-                onClick={() => setActiveTab('project')}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-                  activeTab === 'project'
-                    ? isDarkMode
-                      ? 'text-blue-500 border-blue-900'
-                      : 'text-blue-600 border-blue-600'
-                    : isDarkMode
-                      ? 'text-dark-text-secondary border-transparent hover:text-dark-text'
-                      : 'text-gray-500 border-transparent hover:text-gray-700'
-                }`}
-              >
-                專案
-              </button>
-              <button
-                onClick={() => setActiveTab('ai')}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-                  activeTab === 'ai'
-                    ? isDarkMode
-                      ? 'text-blue-500 border-blue-900'
-                      : 'text-blue-600 border-blue-600'
-                    : isDarkMode
-                      ? 'text-dark-text-secondary border-transparent hover:text-dark-text'
-                      : 'text-gray-500 border-transparent hover:text-gray-700'
-                }`}
-              >
-                AI 結果
               </button>
             </div>
           </div>

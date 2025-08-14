@@ -3,6 +3,8 @@ import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { FirestoreAdapter } from "@auth/firebase-adapter";
 import { cert } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import '@/app/config/firebase-admin';
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -57,9 +59,46 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
+        // persist email for pregrant claim checks
+        if ((user as { email?: string }).email) token.email = (user as { email?: string }).email;
       }
       if (account) {
         token.accessToken = account.access_token;
+      }
+      // Attach plan info (free/plus) from Firestore user profile
+      try {
+        if (token.id) {
+          const db = getFirestore();
+          // Store plan in collection users with doc id equal to user id or email fallback
+          const userDocRef = db.collection('users').doc(String(token.id));
+          const snap = await userDocRef.get();
+          const now = Date.now();
+          const shouldRefresh = !token.planCheckAt || (now - (token.planCheckAt as number)) > 60_000; // refresh every 60s
+          if (shouldRefresh) {
+            if (snap.exists) {
+              const data = snap.data() as { plan?: 'free' | 'plus'; email?: string } | undefined;
+              token.plan = data?.plan || 'free';
+              // ensure token has email for pregrant claim
+              if (!token.email && data?.email) token.email = data.email;
+              // Auto-claim pregrants by email
+              const email: string | undefined = token.email || data?.email;
+              if (email && token.plan === 'free') {
+                const preDoc = await db.collection('plus_pregrants').doc(email.toLowerCase()).get();
+                if (preDoc.exists) {
+                  await userDocRef.set({ plan: 'plus', plusGrantedAt: new Date(), plusSource: 'bmc-pregrant' }, { merge: true });
+                  await db.collection('plus_pregrants').doc(email.toLowerCase()).delete();
+                  token.plan = 'plus';
+                }
+              }
+            } else {
+              token.plan = 'free';
+            }
+            token.planCheckAt = now;
+          }
+        }
+      } catch (e) {
+        // Fallback to free on any error
+        token.plan = token.plan || 'free';
       }
       return token;
     },
@@ -67,6 +106,9 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
+        const plan = (token.plan as 'free' | 'plus') || 'free';
+        session.user.plan = plan;
+        session.user.isPlus = plan === 'plus';
       }
       return session;
     },

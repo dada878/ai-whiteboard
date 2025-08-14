@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 
 interface ToolbarProps {
   onAnalyze: () => void;
@@ -50,6 +51,9 @@ const Toolbar: React.FC<ToolbarProps> = ({ onAnalyze, onSummarize, onClear }) =>
       <div className="text-xs text-gray-400 text-center">
         <p className="mb-2">滑鼠右鍵</p>
         <p>新增便利貼</p>
+        <div className="mt-3">
+          <Link href="/plus" className="inline-block px-2 py-1 rounded bg-yellow-200 text-yellow-900">升級 Plus</Link>
+        </div>
       </div>
     </div>
   );

@@ -88,6 +88,15 @@ const Whiteboard: React.FC = () => {
     targetArea?: unknown;
     targetNotes?: unknown[];
   } | null>(null);
+
+  // Plus 權限檢查
+  const requirePlus = useCallback(() => {
+    if (!user?.isPlus) {
+      setAiResult('🔒 此功能為 Plus 會員限定。前往 /plus 升級以解鎖全部 AI 工具。');
+      return false;
+    }
+    return true;
+  }, [user, setAiResult]);
   
   // AI loading 狀態管理
   const [aiLoadingStates, setAiLoadingStates] = useState<{
@@ -492,6 +501,8 @@ const Whiteboard: React.FC = () => {
 
   // 載入專案資料
   useEffect(() => {
+    // 依據登入使用者切換專案命名空間
+    ProjectService.setUserId(user?.id || null);
     const loadProjectData = async () => {
       // 初始化預設專案
       ProjectService.initializeDefaultProject();
@@ -542,7 +553,7 @@ const Whiteboard: React.FC = () => {
     };
     
     loadProjectData();
-  }, []);
+  }, [user?.id]);
 
   // 處理雲端同步切換
   const handleToggleCloudSync = useCallback(async (enabled: boolean) => {
@@ -2496,6 +2507,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
 
   // AI 收斂節點 - 智能精簡子節點
   const handleAIConvergeNodes = async (isRegenerate = false) => {
+    if (!requirePlus()) return;
     // 檢查是否選中了單一便利貼
     if (selectedNotes.length !== 1) {
       setAiResult('❗ 請選擇一個便利貼來收斂其子節點');
@@ -2592,6 +2604,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
 
   // AI 自動分組
   const handleAIAutoGroup = async (isRegenerate = false) => {
+    if (!requirePlus()) return;
     if (!isRegenerate) {
       setAiResult('📁 正在進行 AI 自動分組...');
     }
@@ -2674,6 +2687,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
 
   // AI 自動生成便利貼
   const handleAIAutoGenerate = async (isRegenerate = false) => {
+    if (!requirePlus()) return;
     if (!isRegenerate) {
       setAiResult('✨ 正在生成新的便利貼...');
     }
@@ -2757,6 +2771,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
 
   // AI 自動連線
   const handleAIAutoConnect = async (isRegenerate = false) => {
+    if (!requirePlus()) return;
     const targetNotes = selectedNotes.length > 0
       ? whiteboardData.notes.filter(note => selectedNotes.includes(note.id))
       : whiteboardData.notes;
@@ -2836,6 +2851,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
 
   // AI 智能整理
   const handleAISmartOrganize = async (isRegenerate = false) => {
+    if (!requirePlus()) return;
     if (!isRegenerate) {
       setAiResult('🎯 正在進行智能整理...');
     }

@@ -50,7 +50,14 @@ export default function AuthButton() {
             : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
         }`}
       >
-        <span className="text-sm">{displayName}</span>
+        <span className="text-sm flex items-center gap-2">
+          {displayName}
+          {user?.isPlus && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-400 text-yellow-900 font-semibold">
+              PLUS
+            </span>
+          )}
+        </span>
         <svg 
           className="w-4 h-4" 
           fill="none" 
@@ -73,6 +80,22 @@ export default function AuthButton() {
             <div className="text-sm font-medium truncate">{displayName}</div>
             {!isAnonymous && user.email && (
               <div className="text-xs opacity-60 truncate">{user.email}</div>
+            )}
+            {user?.isPlus ? (
+              <div className="mt-1 text-xs inline-flex items-center gap-1 text-yellow-500">
+                <span>⭐</span>
+                <span>Plus 會員</span>
+              </div>
+            ) : (
+              <a
+                href="/plus"
+                className={`mt-2 inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${
+                  isDarkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-50 text-blue-700'
+                }`}
+                onClick={() => setShowMenu(false)}
+              >
+                升級 Plus
+              </a>
             )}
           </div>
           

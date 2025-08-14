@@ -120,6 +120,14 @@ ai-whiteboard/
 - 協作功能（多人同時編輯）
 - 範本系統（預設的思維框架）
 
+## 💳 Plus 會員（測試版）
+
+- 透過 Buy Me a Coffee 付款，Webhook 會自動授權為 Plus。
+- 設定環境變數：
+  - `BMC_WEBHOOK_SECRET`（若啟用簽章驗證）
+  - `NEXT_PUBLIC_BMC_USERNAME`（導向你的 BMC 頁面）
+- Webhook URL：`/api/webhooks/bmc`
+
 ## 🤝 貢獻
 
 歡迎提交 Issue 和 Pull Request！

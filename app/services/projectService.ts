@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 const PROJECTS_KEY = 'ai-whiteboard-projects';
 const CURRENT_PROJECT_KEY = 'ai-whiteboard-current-project';
 const PROJECT_DATA_PREFIX = 'ai-whiteboard-project-data-';
+const USER_KEY = 'ai-whiteboard-user-id';
 const STORAGE_VERSION = 'v2';
 
 // Helper function to check if we're in a browser environment
@@ -12,6 +13,32 @@ const isBrowser = (): boolean => {
 };
 
 export class ProjectService {
+  private static userKeySuffix: string | null = null;
+
+  // 在使用者切換時設定 key 後綴，讓每位使用者有獨立的本地專案空間
+  static setUserId(userId: string | null) {
+    this.userKeySuffix = userId ? String(userId) : null;
+    if (isBrowser()) {
+      try {
+        if (userId) {
+          localStorage.setItem(USER_KEY, userId);
+        } else {
+          localStorage.removeItem(USER_KEY);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  private static key(base: string): string {
+    return this.userKeySuffix ? `${base}:${this.userKeySuffix}` : base;
+  }
+
+  private static getProjectsKey(): string { return this.key(PROJECTS_KEY); }
+  private static getCurrentProjectKey(): string { return this.key(CURRENT_PROJECT_KEY); }
+  private static getProjectDataKey(projectId: string): string { return this.key(PROJECT_DATA_PREFIX + projectId); }
+
   // 獲取所有專案列表
   static getAllProjects(): Project[] {
     if (!isBrowser()) {
@@ -19,7 +46,7 @@ export class ProjectService {
     }
     
     try {
-      const stored = localStorage.getItem(PROJECTS_KEY);
+      const stored = localStorage.getItem(this.getProjectsKey()) || localStorage.getItem(PROJECTS_KEY);
       if (!stored) return [];
       
       const projects = JSON.parse(stored) as Project[];
@@ -42,7 +69,7 @@ export class ProjectService {
     }
     
     try {
-      return localStorage.getItem(CURRENT_PROJECT_KEY);
+      return localStorage.getItem(this.getCurrentProjectKey()) || localStorage.getItem(CURRENT_PROJECT_KEY);
     } catch (error) {
       console.error('Failed to get current project ID:', error);
       return null;
@@ -56,7 +83,7 @@ export class ProjectService {
     }
     
     try {
-      localStorage.setItem(CURRENT_PROJECT_KEY, projectId);
+      localStorage.setItem(this.getCurrentProjectKey(), projectId);
     } catch (error) {
       console.error('Failed to set current project:', error);
     }
@@ -80,7 +107,7 @@ export class ProjectService {
     }
     
     try {
-      localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+      localStorage.setItem(this.getProjectsKey(), JSON.stringify(projects));
       
       // 初始化空的專案資料
       const emptyData: WhiteboardData = {
@@ -108,7 +135,7 @@ export class ProjectService {
       return;
     }
     
-    const projects = this.getAllProjects();
+      const projects = this.getAllProjects();
     const index = projects.findIndex(p => p.id === projectId);
     
     if (index !== -1) {
@@ -119,7 +146,7 @@ export class ProjectService {
       };
       
       try {
-        localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+          localStorage.setItem(this.getProjectsKey(), JSON.stringify(projects));
       } catch (error) {
         console.error('Failed to update project:', error);
         throw error;
@@ -137,15 +164,15 @@ export class ProjectService {
     const filtered = projects.filter(p => p.id !== projectId);
     
     try {
-      localStorage.setItem(PROJECTS_KEY, JSON.stringify(filtered));
-      localStorage.removeItem(PROJECT_DATA_PREFIX + projectId);
+      localStorage.setItem(this.getProjectsKey(), JSON.stringify(filtered));
+      localStorage.removeItem(this.getProjectDataKey(projectId));
       
       // 如果刪除的是當前專案，切換到第一個專案
       if (this.getCurrentProjectId() === projectId) {
         if (filtered.length > 0) {
           this.setCurrentProject(filtered[0].id);
         } else {
-          localStorage.removeItem(CURRENT_PROJECT_KEY);
+          localStorage.removeItem(this.getCurrentProjectKey());
         }
       }
     } catch (error) {
@@ -168,7 +195,7 @@ export class ProjectService {
         data: dataWithViewport
       };
       
-      localStorage.setItem(PROJECT_DATA_PREFIX + projectId, JSON.stringify(storageData));
+      localStorage.setItem(this.getProjectDataKey(projectId), JSON.stringify(storageData));
       
       // 更新專案的更新時間
       this.updateProject(projectId, { updatedAt: new Date() });
@@ -189,7 +216,7 @@ export class ProjectService {
     }
     
     try {
-      const stored = localStorage.getItem(PROJECT_DATA_PREFIX + projectId);
+      const stored = localStorage.getItem(this.getProjectDataKey(projectId)) || localStorage.getItem(PROJECT_DATA_PREFIX + projectId);
       if (!stored) return null;
       
       const parsedData = JSON.parse(stored);
