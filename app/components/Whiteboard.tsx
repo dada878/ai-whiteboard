@@ -3325,7 +3325,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
 
         {/* 儲存狀態指示器 - 固定在畫面上方 */}
         {lastSaveTime && (
-          <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 px-3 py-1 rounded-full shadow-md text-xs z-30 ${
+          <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 px-3 py-1 rounded-full shadow-md text-xs z-30 ${
             isDarkMode ? 'bg-dark-bg-secondary text-gray-400' : 'bg-white text-gray-600'
           }`}>
             <span className="text-green-600">✓</span> 自動儲存於 {lastSaveTime.toLocaleTimeString()}

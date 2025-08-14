@@ -305,7 +305,7 @@ export class ProjectService {
     
     const projects = this.getAllProjects();
     if (projects.length === 0) {
-      this.createProject('我的第一個專案', '歡迎使用 AI 白板！');
+      this.createProject('我的第一個專案', '歡迎使用 ThinkBoard！');
     }
   }
 }
