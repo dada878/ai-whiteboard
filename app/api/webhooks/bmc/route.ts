@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { adminDb } from '@/app/config/firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
 import { FieldValue } from 'firebase-admin/firestore';
 
 function verifySignature(rawBody: string, signatureHeader: string | null, secret: string | undefined): boolean {
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
 
   if (!snapshot.empty) {
     const userDoc = snapshot.docs[0];
-    await userDoc.ref.set(grantData, { merge: true });
+    await userDoc.ref.set({ ...grantData, email }, { merge: true });
   } else {
     // Store pre-grant for email to be claimed on next login
     await adminDb.collection('plus_pregrants').doc(email).set({

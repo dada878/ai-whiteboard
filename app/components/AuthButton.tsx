@@ -5,7 +5,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
 import { useTheme } from '../contexts/ThemeContext';
 
-export default function AuthButton() {
+interface AuthButtonProps {
+  onShowPlusWelcome?: () => void;
+}
+
+export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const { isDarkMode } = useTheme();
   const [showMenu, setShowMenu] = useState(false);
@@ -99,6 +103,30 @@ export default function AuthButton() {
             )}
           </div>
           
+          {/* Plus 會員專屬選項 */}
+          {user?.isPlus && onShowPlusWelcome && (
+            <>
+              <div className="py-1">
+                <button
+                  onClick={() => {
+                    onShowPlusWelcome();
+                    setShowMenu(false);
+                  }}
+                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                    isDarkMode 
+                      ? 'hover:bg-dark-bg-tertiary text-dark-text' 
+                      : 'hover:bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span>🎉</span>
+                    <span>查看 Plus 會員權益</span>
+                  </span>
+                </button>
+              </div>
+              <div className={`border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`} />
+            </>
+          )}
           
           <div className="py-1">
             <button

@@ -1,17 +1,21 @@
-import Link from 'next/link';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+'use client';
 
-export default async function PlusPage() {
-  const session = await getServerSession(authOptions);
-  const isPlus = Boolean(session?.user && (session.user as { isPlus?: boolean }).isPlus);
+import Link from 'next/link';
+import { useAuth } from '../contexts/AuthContext';
+import Header from '../components/Header';
+
+export default function PlusPage() {
+  const { user } = useAuth();
+  const isPlus = user?.isPlus || false;
 
   const bmcUsername = process.env.NEXT_PUBLIC_BMC_USERNAME || '';
   const coffeeText = process.env.NEXT_PUBLIC_BMC_BUTTON_TEXT || 'Buy Me a Coffee';
   const bmcLink = bmcUsername ? `https://www.buymeacoffee.com/${bmcUsername}` : 'https://www.buymeacoffee.com/';
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-12">
+    <div>
+      <Header />
+      <div className="max-w-3xl mx-auto px-6 py-12">
       <h1 className="text-3xl font-bold mb-4">升級 Plus</h1>
       <p className="text-gray-600 mb-8">解鎖高級 AI 功能、更快的處理速度與更多便利貼工具。</p>
 
@@ -59,6 +63,7 @@ export default async function PlusPage() {
         <div className="mt-6">
           <Link href="/" className="text-blue-600 hover:underline text-sm">返回首頁</Link>
         </div>
+      </div>
       </div>
     </div>
   );

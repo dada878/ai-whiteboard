@@ -76,10 +76,12 @@ export const authOptions: NextAuthOptions = {
           const shouldRefresh = !token.planCheckAt || (now - (token.planCheckAt as number)) > 60_000; // refresh every 60s
           if (shouldRefresh) {
             if (snap.exists) {
-              const data = snap.data() as { plan?: 'free' | 'plus'; email?: string } | undefined;
+              const data = snap.data() as { plan?: 'free' | 'plus'; email?: string; name?: string } | undefined;
               token.plan = data?.plan || 'free';
               // ensure token has email for pregrant claim
               if (!token.email && data?.email) token.email = data.email;
+              // sync display name from Firestore if present
+              if (data?.name) token.name = data.name;
               // Auto-claim pregrants by email
               const email: string | undefined = token.email || data?.email;
               if (email && token.plan === 'free') {
@@ -109,6 +111,9 @@ export const authOptions: NextAuthOptions = {
         const plan = (token.plan as 'free' | 'plus') || 'free';
         session.user.plan = plan;
         session.user.isPlus = plan === 'plus';
+        if (token.name) {
+          session.user.name = token.name as string;
+        }
       }
       return session;
     },
