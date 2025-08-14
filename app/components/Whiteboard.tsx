@@ -2994,7 +2994,12 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
-          backgroundColor: isDarkMode ? '#1e1e1e' : 'white'
+          backgroundColor: isDarkMode ? '#1e1e1e' : 'white',
+          backgroundImage: isDarkMode 
+            ? 'radial-gradient(circle, #333333 1px, transparent 1px)'
+            : 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)',
+          backgroundSize: `${20 * zoomLevel}px ${20 * zoomLevel}px`,
+          backgroundPosition: `${panOffset.x % (20 * zoomLevel)}px ${panOffset.y % (20 * zoomLevel)}px`
         }}
       >
         {/* 畫布使用提示 */}
@@ -3002,7 +3007,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className={`text-center select-none ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
               <div className="text-6xl mb-4">🧠</div>
-              <div className="text-lg font-medium mb-2">歡迎使用 AI 白板</div>
+              <div className="text-lg font-medium mb-2">歡迎使用 ThinkBoard</div>
               <div className="text-sm space-y-1">
                 <p>• 雙擊空白處新增便利貼</p>
                 <p>• 左鍵拖拽進行框選</p>
@@ -3013,23 +3018,20 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
             </div>
           </div>
         )}
-        {/* 擴大的畫布容器 */}
+        {/* 無限畫布容器 */}
         <div 
           ref={containerRef}
           data-canvas-background
-          className="relative"
+          className="absolute"
           style={{
-            width: '2000vw',
-            height: '2000vh',
-            minWidth: '20000px',
-            minHeight: '20000px',
+            // 使用超大的尺寸來模擬無限空間
+            top: '-50000px',
+            left: '-50000px',
+            width: '100000px',
+            height: '100000px',
             transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) scale(${zoomLevel})`,
-            transformOrigin: '0 0',
-            backgroundImage: isDarkMode 
-              ? 'radial-gradient(circle, #333333 1px, transparent 1px)'
-              : 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)',
-            backgroundSize: '20px 20px',
-            backgroundPosition: '0 0'
+            transformOrigin: '50000px 50000px',
+            willChange: 'transform'
           }}
         >
           {/* SVG 用於繪製連線 */}
@@ -3038,10 +3040,8 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
             style={{
               top: 0,
               left: 0,
-              width: '2000vw',
-              height: '2000vh',
-              minWidth: '20000px',
-              minHeight: '20000px',
+              width: '100000px',
+              height: '100000px',
               overflow: 'visible'
             }}
           >
@@ -3430,9 +3430,9 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
             setAiResult('');
           }
         }}
-        onProjectCreate={(name, description) => {
+        onProjectCreate={async (name, description) => {
           // 創建新專案並切換到它
-          const newProject = ProjectService.createProject(name, description);
+          const newProject = await ProjectService.createProject(name, description);
           ProjectService.setCurrentProject(newProject.id);
           setCurrentProjectId(newProject.id);
           setCurrentProject(newProject);
@@ -3466,10 +3466,11 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
               }
             } else {
               // 沒有專案了，創建預設專案
-              const defaultProject = ProjectService.createProject('我的白板', '預設專案');
-              setCurrentProjectId(defaultProject.id);
-              setCurrentProject(defaultProject);
-              setWhiteboardData({ notes: [], edges: [], groups: [] });
+              ProjectService.createProject('我的白板', '預設專案').then(defaultProject => {
+                setCurrentProjectId(defaultProject.id);
+                setCurrentProject(defaultProject);
+                setWhiteboardData({ notes: [], edges: [], groups: [] });
+              });
             }
           }
         }}

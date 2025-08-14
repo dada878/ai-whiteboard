@@ -278,6 +278,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   >
                     <span>🔄</span>
                     <span>內容重構</span>
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                      isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                    } font-semibold`}>BETA</span>
                   </button>
                   <button
                     onClick={() => {
@@ -306,6 +309,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   >
                     <span>🧩</span>
                     <span>生成心智圖</span>
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                      isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                    } font-semibold`}>BETA</span>
                   </button>
                   <button
                     onClick={() => {
@@ -320,6 +326,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   >
                     <span>🛤️</span>
                     <span>關鍵路徑分析</span>
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                      isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                    } font-semibold`}>BETA</span>
                   </button>
                   <button
                     onClick={() => {
@@ -468,6 +477,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                     >
                       <span>🔗</span>
                       <span>AI 自動連線</span>
+                      <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                        isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                      } font-semibold`}>BETA</span>
                     </button>
                     <button
                       onClick={() => {
@@ -482,6 +494,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                     >
                       <span>🎯</span>
                       <span>AI 智能整理</span>
+                      <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                        isDarkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                      } font-semibold`}>BETA</span>
                     </button>
                   </div>
                 )}

@@ -54,7 +54,7 @@ export default function ProjectDialog({
 
     try {
       // 在本地創建專案
-      const newProject: Project = ProjectService.createProject(newProjectName, newProjectDescription);
+      const newProject: Project = await ProjectService.createProject(newProjectName, newProjectDescription);
 
       setProjects([...projects, newProject]);
       setShowNewProjectForm(false);

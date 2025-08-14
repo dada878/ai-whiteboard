@@ -35,9 +35,9 @@ export class ProjectService {
     return this.userKeySuffix ? `${base}:${this.userKeySuffix}` : base;
   }
 
-  private static getProjectsKey(): string { return this.key(PROJECTS_KEY); }
-  private static getCurrentProjectKey(): string { return this.key(CURRENT_PROJECT_KEY); }
-  private static getProjectDataKey(projectId: string): string { return this.key(PROJECT_DATA_PREFIX + projectId); }
+  static getProjectsKey(): string { return this.key(PROJECTS_KEY); }
+  static getCurrentProjectKey(): string { return this.key(CURRENT_PROJECT_KEY); }
+  static getProjectDataKey(projectId: string): string { return this.key(PROJECT_DATA_PREFIX + projectId); }
 
   // 獲取所有專案列表
   static getAllProjects(): Project[] {
@@ -96,7 +96,7 @@ export class ProjectService {
   }
 
   // 創建新專案
-  static createProject(name: string, description?: string): Project {
+  static async createProject(name: string, description?: string, syncToCloud: boolean = true): Promise<Project> {
     const newProject: Project = {
       id: uuidv4(),
       name,
@@ -126,6 +126,21 @@ export class ProjectService {
       // 如果是第一個專案，自動設為當前專案
       if (projects.length === 1) {
         this.setCurrentProject(newProject.id);
+      }
+      
+      // 如果需要同步到雲端
+      if (syncToCloud && typeof window !== 'undefined') {
+        // 使用動態導入來避免循環依賴
+        const { SyncService } = await import('./syncService');
+        const userId = localStorage.getItem(USER_KEY);
+        if (userId) {
+          try {
+            await SyncService.saveProjectData(userId, newProject.id, emptyData);
+          } catch (error) {
+            console.error('Failed to sync new project to cloud:', error);
+            // 不拋出錯誤，讓專案在本地創建成功
+          }
+        }
       }
       
       return newProject;
@@ -298,14 +313,14 @@ export class ProjectService {
   }
 
   // 初始化預設專案（如果沒有任何專案）
-  static initializeDefaultProject(): void {
+  static async initializeDefaultProject(): Promise<void> {
     if (!isBrowser()) {
       return;
     }
     
     const projects = this.getAllProjects();
     if (projects.length === 0) {
-      this.createProject('我的第一個專案', '歡迎使用 ThinkBoard！');
+      await this.createProject('我的第一個專案', '歡迎使用 ThinkBoard！');
     }
   }
 }

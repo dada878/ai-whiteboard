@@ -18,7 +18,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized - No user ID' }, { status: 401 });
     }
 
-    const { projectId, data, action } = await req.json();
+    const body = await req.json();
+    const { projectId, data, action, projectMetadata } = body;
 
     if (!action) {
       return NextResponse.json({ error: 'Missing action' }, { status: 400 });
@@ -32,6 +33,23 @@ export async function POST(req: NextRequest) {
         if (!projectId) {
           return NextResponse.json({ error: 'Missing projectId for save action' }, { status: 400 });
         }
+        
+        // Save project metadata if provided
+        if (projectMetadata) {
+          await adminDb
+            .collection('users')
+            .doc(userId)
+            .collection('projects')
+            .doc(projectId)
+            .set({
+              name: projectMetadata.name,
+              description: projectMetadata.description,
+              createdAt: projectMetadata.createdAt || new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+        }
+        
+        // Save whiteboard data
         await adminDb
           .collection('users')
           .doc(userId)

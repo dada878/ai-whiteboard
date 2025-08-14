@@ -88,7 +88,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
     if (!newProjectName.trim()) return;
 
     try {
-      const newProject = ProjectService.createProject(newProjectName, newProjectDescription);
+      const newProject = await ProjectService.createProject(newProjectName, newProjectDescription);
       setProjects([...projects, newProject]);
       setShowNewProjectForm(false);
       setNewProjectName('');

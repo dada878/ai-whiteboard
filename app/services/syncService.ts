@@ -60,8 +60,23 @@ export class SyncService {
         const localProjects = ProjectService.getAllProjects();
         const localProject = localProjects.find(p => p.id === cloudProject.id);
         if (!localProject) {
-          // 如果本地沒有，創建它
-          ProjectService.createProject(cloudProject.name, cloudProject.description || '');
+          // 如果本地沒有，直接添加到本地專案列表
+          const newProject: Project = {
+            id: cloudProject.id,
+            name: cloudProject.name || '未命名專案',
+            description: cloudProject.description,
+            createdAt: new Date(cloudProject.createdAt || Date.now()),
+            updatedAt: new Date(cloudProject.updatedAt || Date.now())
+          };
+          
+          // 直接操作本地存儲，避免創建新的 UUID
+          const currentProjects = ProjectService.getAllProjects();
+          currentProjects.push(newProject);
+          
+          if (typeof window !== 'undefined' && localStorage) {
+            const projectsKey = ProjectService.getProjectsKey();
+            localStorage.setItem(projectsKey, JSON.stringify(currentProjects));
+          }
           
           // 獲取白板資料
           const dataResponse = await fetch('/api/sync', {
@@ -109,7 +124,13 @@ export class SyncService {
         body: JSON.stringify({
           action: 'save',
           projectId: project.id,
-          data: whiteboardData
+          data: whiteboardData,
+          projectMetadata: {
+            name: project.name,
+            description: project.description,
+            createdAt: project.createdAt,
+            updatedAt: project.updatedAt
+          }
         })
       });
 
@@ -194,6 +215,9 @@ export class SyncService {
     try {
       this.syncStatus.isSyncing = true;
       
+      // 獲取專案元數據
+      const project = ProjectService.getProject(projectId);
+      
       const response = await fetch('/api/sync', {
         method: 'POST',
         headers: {
@@ -202,7 +226,13 @@ export class SyncService {
         body: JSON.stringify({
           action: 'save',
           projectId: projectId,
-          data: data
+          data: data,
+          projectMetadata: project ? {
+            name: project.name,
+            description: project.description,
+            createdAt: project.createdAt,
+            updatedAt: project.updatedAt
+          } : undefined
         })
       });
 
