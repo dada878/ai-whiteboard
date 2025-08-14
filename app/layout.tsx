@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Whiteboard",
+  title: "ThinkBoard",
   description: "AI 協作白板工具",
 };
 

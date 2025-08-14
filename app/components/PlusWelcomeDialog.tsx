@@ -104,7 +104,7 @@ export default function PlusWelcomeDialog({ isOpen, onClose }: PlusWelcomeDialog
           <div className={`text-center mb-8 ${isDarkMode ? 'text-dark-text' : 'text-gray-800'}`}>
             <h2 className="text-2xl font-bold mb-3">感謝您的支持！</h2>
             <p className="text-lg opacity-80">
-              您現在可以享受 AI Whiteboard 的所有進階功能
+              您現在可以享受 ThinkBoard 的所有進階功能
             </p>
           </div>
 

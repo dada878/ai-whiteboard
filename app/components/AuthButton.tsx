@@ -156,6 +156,8 @@ export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) 
                 </span>
               </button>
             )}
+
+            
           </div>
           
           <div className={`border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`} />

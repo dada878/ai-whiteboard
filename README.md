@@ -1,4 +1,4 @@
-# 🧠 AI Whiteboard - 智能白板工具
+# 🧠 ThinkBoard - 智能白板工具
 
 一個支援 AI 輔助的互動式白板應用程式，讓你可以自由創建便利貼、建立連線，並透過 AI 功能進行思維發散、結構分析和內容摘要。
 
@@ -82,7 +82,7 @@ NEXT_PUBLIC_OPENAI_API_KEY=你的API金鑰
 ## 📁 專案結構
 
 ```
-ai-whiteboard/
+thinkboard/
 ├── app/
 │   ├── components/          # React 元件
 │   │   ├── Whiteboard.tsx  # 主白板元件

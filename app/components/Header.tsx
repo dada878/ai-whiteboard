@@ -15,7 +15,7 @@ export default function Header({ onShowPlusWelcome }: HeaderProps) {
   return (
     <header className="w-full border-b border-gray-200">
       <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-        <Link href="/" className="text-lg font-semibold">AI Whiteboard</Link>
+        <Link href="/" className="text-lg font-semibold">ThinkBoard</Link>
         <div className="flex items-center gap-3">
           {!isPlus && (
             <Link href="/plus" className="text-sm px-3 py-1.5 rounded bg-yellow-100 text-yellow-800 hover:bg-yellow-200">

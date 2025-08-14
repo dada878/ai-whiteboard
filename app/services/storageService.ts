@@ -1,6 +1,6 @@
 import { WhiteboardData, ViewportState } from '../types';
 
-const STORAGE_KEY = 'ai-whiteboard-data';
+const STORAGE_KEY = 'thinkboard-data';
 const STORAGE_VERSION = 'v1';
 
 // Helper function to check if we're in a browser environment

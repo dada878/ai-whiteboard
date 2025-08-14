@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Project } from '../types';
 import { SyncStatus } from '../services/syncService';
 import { ProjectService } from '../services/projectService';
+import EditProjectDialog from './EditProjectDialog';
 
 interface SidePanelProps {
   aiResult: string;
@@ -51,6 +52,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const [newProjectDescription, setNewProjectDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(aiResult);
@@ -126,6 +128,33 @@ const SidePanel: React.FC<SidePanelProps> = ({
       }
     } catch (error) {
       console.error('刪除專案失敗:', error);
+    }
+  };
+
+  const handleEditProject = (name: string, description: string) => {
+    if (!editingProject) return;
+
+    try {
+      ProjectService.updateProject(editingProject.id, {
+        name,
+        description
+      });
+
+      // 更新本地狀態
+      setProjects(projects.map(p => 
+        p.id === editingProject.id 
+          ? { ...p, name, description, updatedAt: new Date() }
+          : p
+      ));
+
+      // 如果是當前專案，更新父組件
+      if (editingProject.id === currentProject?.id && onProjectCreate) {
+        onProjectCreate(name, description);
+      }
+
+      setEditingProject(null);
+    } catch (error) {
+      console.error('更新專案失敗:', error);
     }
   };
 
@@ -331,21 +360,38 @@ const SidePanel: React.FC<SidePanelProps> = ({
                                 )}
                               </div>
                             </div>
-                            {projects.length > 1 && (
+                            <div className="flex items-center gap-1">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleDeleteProject(project.id);
+                                  setEditingProject(project);
                                 }}
-                                className={`ml-2 p-1 rounded transition-colors ${
+                                className={`p-1 rounded transition-colors ${
                                   isDarkMode 
-                                    ? 'hover:bg-red-900/30 text-red-400' 
-                                    : 'hover:bg-red-50 text-red-600'
+                                    ? 'hover:bg-blue-900/30 text-blue-400' 
+                                    : 'hover:bg-blue-50 text-blue-600'
                                 }`}
+                                title="編輯專案"
                               >
-                                🗑️
+                                ✏️
                               </button>
-                            )}
+                              {projects.length > 1 && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteProject(project.id);
+                                  }}
+                                  className={`p-1 rounded transition-colors ${
+                                    isDarkMode 
+                                      ? 'hover:bg-red-900/30 text-red-400' 
+                                      : 'hover:bg-red-50 text-red-600'
+                                  }`}
+                                  title="刪除專案"
+                                >
+                                  🗑️
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -593,6 +639,17 @@ const SidePanel: React.FC<SidePanelProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* 編輯專案對話框 */}
+      {editingProject && (
+        <EditProjectDialog
+          isOpen={!!editingProject}
+          projectName={editingProject.name}
+          projectDescription={editingProject.description}
+          onClose={() => setEditingProject(null)}
+          onSave={handleEditProject}
+        />
       )}
     </div>
   );

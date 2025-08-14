@@ -1,10 +1,10 @@
 import { Project, ProjectWithData, WhiteboardData, ViewportState } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
-const PROJECTS_KEY = 'ai-whiteboard-projects';
-const CURRENT_PROJECT_KEY = 'ai-whiteboard-current-project';
-const PROJECT_DATA_PREFIX = 'ai-whiteboard-project-data-';
-const USER_KEY = 'ai-whiteboard-user-id';
+const PROJECTS_KEY = 'thinkboard-projects';
+const CURRENT_PROJECT_KEY = 'thinkboard-current-project';
+const PROJECT_DATA_PREFIX = 'thinkboard-project-data-';
+const USER_KEY = 'thinkboard-user-id';
 const STORAGE_VERSION = 'v2';
 
 // Helper function to check if we're in a browser environment
@@ -60,6 +60,12 @@ export class ProjectService {
       console.error('Failed to load projects:', error);
       return [];
     }
+  }
+
+  // 獲取單個專案
+  static getProject(projectId: string): Project | null {
+    const projects = this.getAllProjects();
+    return projects.find(p => p.id === projectId) || null;
   }
 
   // 獲取當前專案 ID
