@@ -4,25 +4,27 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-// 檢查是否在 CI/CD 或 Docker build 環境
-if (process.env.CI || process.env.DOCKER_BUILD || !fs.existsSync('.git')) {
-  console.log('📦 偵測到 build 環境，跳過 Git hooks 安裝');
+// 立即檢查 .git 目錄是否存在（使用絕對路徑）
+const gitDir = path.join(process.cwd(), '.git');
+const hooksDir = path.join(gitDir, 'hooks');
+
+// 如果沒有 .git 目錄，直接退出
+if (!fs.existsSync(gitDir)) {
+  console.log('📦 沒有 .git 目錄，跳過 Git hooks 安裝（可能是 build 環境）');
   process.exit(0);
+}
+
+// 如果沒有 hooks 目錄，嘗試創建
+if (!fs.existsSync(hooksDir)) {
+  try {
+    fs.mkdirSync(hooksDir, { recursive: true });
+  } catch (error) {
+    console.log('⚠️  無法創建 hooks 目錄，跳過安裝');
+    process.exit(0);
+  }
 }
 
 console.log('🔧 正在安裝 Git Hooks...');
-
-// 檢查是否在 git repository 中
-try {
-  execSync('git rev-parse --git-dir', { stdio: 'ignore' });
-} catch (error) {
-  console.log('⚠️  不在 Git repository 中，跳過 hooks 安裝');
-  process.exit(0);
-}
-
-// 取得專案根目錄和 .git/hooks 目錄
-const projectRoot = execSync('git rev-parse --show-toplevel', { encoding: 'utf8' }).trim();
-const hooksDir = path.join(projectRoot, '.git', 'hooks');
 
 // 檢查 Node.js 路徑
 let nodePath = '';
