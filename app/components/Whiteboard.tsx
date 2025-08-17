@@ -233,13 +233,6 @@ const Whiteboard: React.FC = () => {
   }, [whiteboardData.notes, whiteboardData.images]);
 
   const deleteSelectedItems = useCallback(() => {
-    console.log('=== deleteSelectedItems START ===');
-    console.log('Current panOffset:', panOffset);
-    console.log('Current zoomLevel:', zoomLevel);
-    console.log('Window scroll:', { x: window.scrollX, y: window.scrollY });
-    console.log('Selected notes:', selectedNotes);
-    console.log('Selected images:', selectedImages);
-    
     saveToHistory(whiteboardData);
     
     const hasSelectedNotes = selectedNotes.length > 0 || selectedNote;
@@ -251,10 +244,8 @@ const Whiteboard: React.FC = () => {
         ? [selectedImage] 
         : selectedImages;
       
-      console.log('Notes to delete:', notesToDelete);
-      console.log('Images to delete:', imagesToDelete);
-      
       updateWhiteboardData(prev => ({
+        ...prev,
         notes: prev.notes.filter(note => !notesToDelete.includes(note.id)),
         edges: prev.edges.filter(edge => 
           !notesToDelete.includes(edge.from) && !notesToDelete.includes(edge.to) &&
@@ -264,24 +255,18 @@ const Whiteboard: React.FC = () => {
         images: (prev.images || []).filter(image => !imagesToDelete.includes(image.id))
       }));
       
-      console.log('Clearing all selections...');
       setSelectedNotes([]);
       setSelectedNote(null);
       setSelectedImages([]);
       setSelectedImage(null);
     } else if (selectedEdge) {
-      console.log('Deleting edge:', selectedEdge);
       updateWhiteboardData(prev => ({
         ...prev,
         edges: prev.edges.filter(edge => edge.id !== selectedEdge)
       }));
       setSelectedEdge(null);
     }
-    
-    console.log('=== deleteSelectedItems END ===');
-    console.log('panOffset after delete:', panOffset);
-    console.log('Window scroll after delete:', { x: window.scrollX, y: window.scrollY });
-  }, [selectedNotes, selectedNote, selectedImages, selectedImage, selectedEdge, whiteboardData, saveToHistory, panOffset, zoomLevel]);
+  }, [selectedNotes, selectedNote, selectedImages, selectedImage, selectedEdge, whiteboardData, saveToHistory]);
 
   const moveSelectedNotes = useCallback((deltaX: number, deltaY: number) => {
     const notesToMove = selectedNote ? [selectedNote] : selectedNotes;
@@ -874,10 +859,6 @@ const Whiteboard: React.FC = () => {
     animate();
   }, [calculateContentBounds, canvasRef, zoomLevel, panOffset, MIN_ZOOM, MAX_ZOOM]);
 
-  // 監聽 panOffset 變化
-  useEffect(() => {
-    console.log('panOffset changed to:', panOffset);
-  }, [panOffset]);
 
   // 鍵盤快捷鍵處理
   useEffect(() => {
@@ -1095,34 +1076,22 @@ const Whiteboard: React.FC = () => {
   }, [isDraggingNote, isHoldingCmd, whiteboardData.notes, selectedNotes]);
 
   const deleteStickyNote = useCallback((id: string) => {
-    console.log('=== deleteStickyNote START ===');
-    console.log('Deleting note ID:', id);
-    console.log('Current panOffset before delete:', panOffset);
-    console.log('Current zoomLevel before delete:', zoomLevel);
-    console.log('Current scroll position:', { x: window.scrollX, y: window.scrollY });
-    console.log('Document active element:', document.activeElement);
-    
     saveToHistory(whiteboardData); // 保存歷史記錄
     
     // 清理選取狀態
     if (selectedNote === id) {
-      console.log('Clearing selectedNote');
       setSelectedNote(null);
     }
     if (selectedNotes.includes(id)) {
-      console.log('Removing from selectedNotes');
       setSelectedNotes(prev => prev.filter(noteId => noteId !== id));
     }
     if (autoEditNoteId === id) {
-      console.log('Clearing autoEditNoteId');
       setAutoEditNoteId(null);
     }
     if (connectingFrom === id) {
-      console.log('Clearing connectingFrom');
       setConnectingFrom(null);
     }
     
-    console.log('Updating whiteboard data...');
     updateWhiteboardData(prev => {
       // 找到被刪除便利貼所屬的群組
       const deletedNote = prev.notes.find(note => note.id === id);
@@ -1137,22 +1106,14 @@ const Whiteboard: React.FC = () => {
           ).filter(group => group.noteIds.length > 0) // 移除空群組
         : prev.groups || []; // 保持原有的 groups，而不是返回空陣列
       
-      const result = {
+      return {
         ...prev,
         notes: prev.notes.filter(note => note.id !== id),
         edges: prev.edges.filter(edge => edge.from !== id && edge.to !== id),
         groups: updatedGroups
       };
-      
-      console.log('Notes after delete:', result.notes.length);
-      console.log('Edges after delete:', result.edges.length);
-      return result;
     });
-    
-    console.log('=== deleteStickyNote END ===');
-    console.log('panOffset after delete:', panOffset);
-    console.log('Scroll position after delete:', { x: window.scrollX, y: window.scrollY });
-  }, [whiteboardData, saveToHistory, selectedNote, selectedNotes, autoEditNoteId, connectingFrom, panOffset, zoomLevel]);
+  }, [whiteboardData, saveToHistory, selectedNote, selectedNotes, autoEditNoteId, connectingFrom]);
 
   const deleteEdge = useCallback((id: string) => {
     saveToHistory(whiteboardData); // 保存歷史記錄
@@ -1672,12 +1633,6 @@ const Whiteboard: React.FC = () => {
       
       if (!isInEditableArea) {
         event.preventDefault();
-        console.log('Wheel event - updating panOffset:', {
-          deltaX: event.deltaX,
-          deltaY: event.deltaY,
-          oldPan: panOffset,
-          newPan: { x: panOffset.x - event.deltaX, y: panOffset.y - event.deltaY }
-        });
         setPanOffset(prev => ({
           x: prev.x - event.deltaX,
           y: prev.y - event.deltaY
