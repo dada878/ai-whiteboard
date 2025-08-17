@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { WhiteboardData } from '@/app/types';
 
 export interface ChatMessage {
@@ -15,15 +15,59 @@ export interface ChatMessage {
 interface UseAIAgentOptions {
   onError?: (error: string) => void;
   maxHistoryLength?: number;
+  persistKey?: string; // 用於 localStorage 的 key
 }
+
+const STORAGE_PREFIX = 'ai_chat_history_';
+const MAX_STORAGE_MESSAGES = 100; // 最多儲存的訊息數量
 
 export function useAIAgent(
   whiteboardData: WhiteboardData,
   options: UseAIAgentOptions = {}
 ) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const storageKey = options.persistKey || `${STORAGE_PREFIX}default`;
+  
+  // 從 localStorage 載入對話記錄
+  const loadMessages = useCallback(() => {
+    if (typeof window === 'undefined') return [];
+    
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // 轉換 timestamp 字串回 Date 物件
+        return parsed.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+    }
+    return [];
+  }, [storageKey]);
+  
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // 儲存對話記錄到 localStorage
+  const saveMessages = useCallback((msgs: ChatMessage[]) => {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      // 只保留最近的訊息以避免超過 localStorage 限制
+      const toSave = msgs.slice(-MAX_STORAGE_MESSAGES);
+      localStorage.setItem(storageKey, JSON.stringify(toSave));
+    } catch (error) {
+      console.error('Failed to save chat history:', error);
+    }
+  }, [storageKey]);
+  
+  // 當 messages 改變時自動儲存
+  useEffect(() => {
+    saveMessages(messages);
+  }, [messages, saveMessages]);
 
   // 發送訊息
   const sendMessage = useCallback(async (message: string) => {
@@ -118,7 +162,11 @@ export function useAIAgent(
   // 清除對話歷史
   const clearMessages = useCallback(() => {
     setMessages([]);
-  }, []);
+    // 同時清除 localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(storageKey);
+    }
+  }, [storageKey]);
 
   // 取消當前請求
   const cancelRequest = useCallback(() => {

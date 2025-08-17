@@ -147,7 +147,8 @@ export function AIChatPanelStream({
     onError: (error) => {
       console.error('AI Agent error:', error);
     },
-    maxHistoryLength: 20
+    maxHistoryLength: 20,
+    persistKey: 'ai_assistant_stream' // 使用固定的 key 來持久化對話
   });
 
   // 自動滾動到底部

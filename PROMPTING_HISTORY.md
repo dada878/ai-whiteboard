@@ -139,6 +139,42 @@ AI Chat 面板中存在大量的 `dark:` Tailwind 類別，這些類別在某些
 - 修改：`/app/components/AIChat/AIChatPanelStream.tsx`
 - 修改：`/app/components/SidePanel.tsx`
 
+## 2025-01-17 - AI 助手對話記錄持久化
+
+### 問題
+使用者回報：當切換 Tab（AI 助手和專案之間）時，對話記錄會完全流失
+
+### 解決方案
+實作對話記錄持久化到 localStorage，讓對話記錄在 Tab 切換時保留
+
+### 技術實作
+1. **useAIAgent Hook 改進**
+   - 新增 `persistKey` 參數用於 localStorage key
+   - 實作 `loadMessages()` 從 localStorage 載入歷史記錄
+   - 實作 `saveMessages()` 自動儲存對話到 localStorage
+   - 設定最多儲存 100 條訊息的限制
+   - 清除對話時同時清除 localStorage
+
+2. **useAIAgentStream Hook 改進**
+   - 同樣新增持久化功能
+   - 只儲存 user 和 assistant 訊息（過濾 process/tool 訊息）
+   - 載入時確保訊息狀態正確（isStreaming: false）
+
+3. **元件更新**
+   - AIChatPanel: 使用 persistKey: 'ai_assistant'
+   - AIChatPanelStream: 使用 persistKey: 'ai_assistant_stream'
+
+### 影響檔案
+- `/app/hooks/useAIAgent.ts`
+- `/app/hooks/useAIAgentStream.ts`
+- `/app/components/AIChat/AIChatPanel.tsx`
+- `/app/components/AIChat/AIChatPanelStream.tsx`
+
+### 測試要點
+- 發送幾條訊息後切換 Tab，再切回來確認訊息還在
+- 清除對話功能正常運作
+- localStorage 不會無限增長（有 100 條限制）
+
 ### 之前記錄
 
 ### 設計 AI Agent 對話功能

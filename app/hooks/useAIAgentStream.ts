@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { WhiteboardData } from '@/app/types';
 
 export interface ChatMessage {
@@ -30,7 +30,11 @@ export interface ToolCall {
 interface UseAIAgentStreamOptions {
   onError?: (error: string) => void;
   maxHistoryLength?: number;
+  persistKey?: string; // 用於 localStorage 的 key
 }
+
+const STORAGE_PREFIX = 'ai_chat_stream_';
+const MAX_STORAGE_MESSAGES = 100; // 最多儲存的訊息數量
 
 // 簡單的 token 估算函數（粗略估算：1 token ≈ 4 字符）
 function estimateTokens(text: string): number {
@@ -72,13 +76,58 @@ export function useAIAgentStream(
   whiteboardData: WhiteboardData,
   options: UseAIAgentStreamOptions = {}
 ) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const storageKey = options.persistKey || `${STORAGE_PREFIX}default`;
+  
+  // 從 localStorage 載入對話記錄
+  const loadMessages = useCallback(() => {
+    if (typeof window === 'undefined') return [];
+    
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // 轉換 timestamp 字串回 Date 物件，並過濾掉 process/tool 訊息
+        return parsed
+          .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
+          .map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp),
+            isStreaming: false // 確保載入的訊息不是串流狀態
+          }));
+      }
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+    }
+    return [];
+  }, [storageKey]);
+  
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [isLoading, setIsLoading] = useState(false);
   const [currentToolCalls, setCurrentToolCalls] = useState<ToolCall[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   
   // 追蹤正在進行的工具調用，用於合併顯示
   const activeToolCallsRef = useRef<Map<string, string>>(new Map());
+  
+  // 儲存對話記錄到 localStorage
+  const saveMessages = useCallback((msgs: ChatMessage[]) => {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      // 只儲存 user 和 assistant 訊息，過濾掉 process/tool 訊息
+      const toSave = msgs
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .slice(-MAX_STORAGE_MESSAGES);
+      localStorage.setItem(storageKey, JSON.stringify(toSave));
+    } catch (error) {
+      console.error('Failed to save chat history:', error);
+    }
+  }, [storageKey]);
+  
+  // 當 messages 改變時自動儲存
+  useEffect(() => {
+    saveMessages(messages);
+  }, [messages, saveMessages]);
 
   // 發送訊息（使用 SSE 串流）
   const sendMessage = useCallback(async (message: string) => {
@@ -505,7 +554,11 @@ export function useAIAgentStream(
     setMessages([]);
     setCurrentToolCalls([]);
     activeToolCallsRef.current.clear();
-  }, []);
+    // 同時清除 localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(storageKey);
+    }
+  }, [storageKey]);
 
   // 取消當前請求
   const cancelRequest = useCallback(() => {
