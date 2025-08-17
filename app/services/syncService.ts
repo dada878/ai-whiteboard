@@ -167,16 +167,27 @@ export class SyncService {
         if (response.ok) {
           const { data } = await response.json();
           if (data) {
+            // 先檢查保護期（提前檢查，避免不必要的比較）
+            const now = new Date();
+            const lastLocalChange = this.syncStatus.lastLocalChangeTime;
+            const timeSinceLastChange = lastLocalChange ? now.getTime() - lastLocalChange.getTime() : Infinity;
+            
+            // 延長保護期到 30 秒
+            if (timeSinceLastChange < 30000) {
+              console.log(`[Sync] Skipping - local changes ${Math.round(timeSinceLastChange/1000)}s ago`);
+              return;
+            }
+            
             // 檢查是否有更新
             const localData = ProjectService.loadProjectData(projectId);
             if (localData && JSON.stringify(data) !== JSON.stringify(localData)) {
-              // 檢查是否在最近10秒內有本地變更，如果有則跳過同步以避免覆蓋用戶正在進行的操作
-              const now = new Date();
-              const lastLocalChange = this.syncStatus.lastLocalChangeTime;
-              if (lastLocalChange && (now.getTime() - lastLocalChange.getTime()) < 10000) {
+              // 再次檢查保護期（雙重保護）
+              if (timeSinceLastChange < 30000) {
+                console.log('[Sync] Data differs but still in protection period');
                 return;
               }
               
+              console.log('[Sync] Applying cloud data - no recent local changes');
               // 如果沒有最近的本地變更，才應用雲端資料
               onUpdate(data);
             }

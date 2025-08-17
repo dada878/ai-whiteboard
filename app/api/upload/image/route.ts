@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     
     // Generate unique filename
     const fileExtension = file.name.split('.').pop();
-    const uniqueFileName = `whiteboard-images/${session.user?.id || 'anonymous'}/${uuidv4()}.${fileExtension}`;
+    const uniqueFileName = `whiteboard-images/${session?.user?.id || 'anonymous'}/${uuidv4()}.${fileExtension}`;
     
     // Get bucket and create file reference
     const bucket = adminStorage.bucket();
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
         contentType: file.type,
         metadata: {
           originalName: file.name,
-          uploadedBy: session.user?.email || 'anonymous',
+          uploadedBy: session?.user?.email || 'anonymous',
           uploadedAt: new Date().toISOString()
         }
       }

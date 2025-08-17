@@ -9,7 +9,6 @@ import { ProjectService } from '../services/projectService';
 import EditProjectDialog from './EditProjectDialog';
 
 interface SidePanelProps {
-  aiResult: string;
   currentProject?: Project | null;
   syncStatus?: SyncStatus;
   onProjectSelect?: (projectId: string) => void;
@@ -17,60 +16,30 @@ interface SidePanelProps {
   onProjectDelete?: (projectId: string) => void;
   cloudSyncEnabled?: boolean;
   onToggleCloudSync?: (enabled: boolean) => void;
-  // AI loading 狀態
-  aiLoadingStates?: {
-    analyze: boolean;
-    summarize: boolean;
-    brainstorm: boolean;
-    askAI: boolean;
-    // Chain of thought 思考步驟
-    thinkingSteps?: string[];
-    currentStep?: number;
-    // 每個步驟的詳細結果
-    stepResults?: { [stepIndex: number]: string };
-  };
 }
 
 const SidePanel: React.FC<SidePanelProps> = ({ 
-  aiResult,
   currentProject,
   syncStatus,
   onProjectSelect,
   onProjectCreate,
   onProjectDelete,
-  cloudSyncEnabled = false,
-  onToggleCloudSync,
-  aiLoadingStates
+  cloudSyncEnabled = false
 }) => {
   const { isDarkMode } = useTheme();
   const { user } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'ai' | 'project'>('ai');
   const [projects, setProjects] = useState<Project[]>([]);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
   const [loading, setLoading] = useState(false);
-  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(aiResult);
-  };
-
-  // 當 AI loading 狀態變化時重置展開狀態
-  useEffect(() => {
-    if (aiLoadingStates?.brainstorm && aiLoadingStates?.thinkingSteps) {
-      setExpandedSteps(new Set());
-    }
-  }, [aiLoadingStates?.brainstorm, aiLoadingStates?.thinkingSteps]);
 
   // 載入專案列表
   useEffect(() => {
-    if (activeTab === 'project') {
-      loadProjects();
-    }
-  }, [activeTab]);
+    loadProjects();
+  }, []);
 
   const loadProjects = async () => {
     setLoading(true);
@@ -161,7 +130,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
   return (
     <>
     {/* 桌面版側邊欄 */}
-    <div className={`hidden md:block border-l transition-all duration-300 ${
+    <div className={`hidden md:flex flex-col border-l transition-all duration-300 h-full overflow-hidden ${
       isCollapsed ? 'w-8' : 'w-80'
     } ${
       isDarkMode 
@@ -178,46 +147,20 @@ const SidePanel: React.FC<SidePanelProps> = ({
           <span className="transform rotate-180">◀</span>
         </button>
       ) : (
-        <div className="h-full flex flex-col">
-          {/* 頂部標題 + 分頁 + 收合，合併為單一列 */}
-          <div className={`border-b ${
+        <div className="h-full flex flex-col overflow-hidden">
+          {/* 頂部標題 + 收合按鈕 */}
+          <div className={`border-b flex-shrink-0 ${
             isDarkMode ? 'border-gray-600' : 'border-gray-200'
           }`}>
-            <div className="flex items-center justify-between px-3">
-              {/* 分頁標籤 */}
-              <div className="flex flex-1">
-                <button
-                  onClick={() => setActiveTab('project')}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
-                    activeTab === 'project'
-                      ? isDarkMode
-                        ? 'text-blue-500 border-blue-900'
-                        : 'text-blue-600 border-blue-600'
-                      : isDarkMode
-                        ? 'text-dark-text-secondary border-transparent hover:text-dark-text'
-                        : 'text-gray-500 border-transparent hover:text-gray-700'
-                  }`}
-                >
-                  專案
-                </button>
-                <button
-                  onClick={() => setActiveTab('ai')}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
-                    activeTab === 'ai'
-                      ? isDarkMode
-                        ? 'text-blue-500 border-blue-900'
-                        : 'text-blue-600 border-blue-600'
-                      : isDarkMode
-                        ? 'text-dark-text-secondary border-transparent hover:text-dark-text'
-                        : 'text-gray-500 border-transparent hover:text-gray-700'
-                  }`}
-                >
-                  AI 結果
-                </button>
-              </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <h2 className={`text-lg font-semibold ${
+                isDarkMode ? 'text-dark-text' : 'text-gray-900'
+              }`}>
+                專案管理
+              </h2>
               <button
                 onClick={() => setIsCollapsed(true)}
-                className={`ml-2 px-2 py-2 rounded transition-colors ${
+                className={`px-2 py-2 rounded transition-colors ${
                   isDarkMode 
                     ? 'text-gray-400 hover:text-gray-200 hover:bg-dark-bg-tertiary' 
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
@@ -230,9 +173,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
           </div>
           
           {/* 內容區域 */}
-          <div className="flex-1 p-4 overflow-y-auto">
-            {activeTab === 'project' ? (
-              // 專案列表視圖
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+            <div className="p-4">
+              {/* 專案列表視圖 */}
               <div className="space-y-4">
                 {loading ? (
                   <div className="text-center py-8">
@@ -452,197 +395,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
                   </>
                 )}
               </div>
-            ) : (aiLoadingStates?.analyze || aiLoadingStates?.summarize || aiLoadingStates?.brainstorm || aiLoadingStates?.askAI || aiLoadingStates?.stepResults) ? (
-              // AI Loading 狀態
-              <div className="space-y-4">
-                <div className={`p-6 rounded-lg ${
-                  isDarkMode ? 'bg-dark-bg-tertiary' : 'bg-gray-50'
-                }`}>
-                  <div className="flex flex-col items-center justify-center space-y-4">
-                    <div className={`relative w-12 h-12 ${
-                      isDarkMode ? 'text-blue-400' : 'text-blue-600'
-                    }`}>
-                      <div className="absolute inset-0 border-4 border-current border-t-transparent rounded-full animate-spin"></div>
-                      <div className="absolute inset-2 border-2 border-current border-b-transparent rounded-full animate-spin-reverse"></div>
-                    </div>
-                    <div className="text-center w-full">
-                      <p className={`text-sm font-medium ${
-                        isDarkMode ? 'text-gray-200' : 'text-gray-800'
-                      }`}>
-                        {aiLoadingStates?.brainstorm ? '🧠 AI 正在發想創意...' :
-                         aiLoadingStates?.analyze ? '📊 AI 正在分析結構...' :
-                         aiLoadingStates?.summarize ? '📝 AI 正在生成摘要...' :
-                         aiLoadingStates?.askAI ? '💬 AI 正在思考回答...' : 
-                         'AI 正在處理中...'}
-                      </p>
-                      
-                      {/* Chain of thought 思考步驟顯示 */}
-                      {aiLoadingStates?.brainstorm && aiLoadingStates?.thinkingSteps && (
-                        <div className="mt-4 w-full">
-                          <div className={`text-xs mb-3 ${
-                            isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                          }`}>
-                            思考過程：
-                          </div>
-                          <div className="space-y-2">
-                            {aiLoadingStates.thinkingSteps.map((step, index) => {
-                              const isCurrent = aiLoadingStates.currentStep === index;
-                              const isCompleted = (aiLoadingStates.currentStep ?? -1) > index;
-                              const hasResult = aiLoadingStates.stepResults?.[index];
-                              
-                              return (
-                                <div
-                                  key={index}
-                                  className={`rounded-lg transition-all duration-500 ${
-                                    isCurrent
-                                      ? isDarkMode
-                                        ? 'bg-blue-900/30 border border-blue-900'
-                                        : 'bg-blue-50 border border-blue-500'
-                                      : isCompleted
-                                        ? isDarkMode
-                                          ? 'bg-green-900/20 border border-green-900/50'
-                                          : 'bg-green-50 border border-green-500/50'
-                                        : isDarkMode
-                                          ? 'bg-gray-700/30 border border-gray-600/50'
-                                          : 'bg-gray-100 border border-gray-300/50'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3 p-2">
-                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                                      isCurrent
-                                        ? 'animate-pulse'
-                                        : ''
-                                    }`}>
-                                      {isCompleted ? (
-                                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                      ) : isCurrent ? (
-                                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                                      ) : (
-                                        <div className={`w-2 h-2 rounded-full ${
-                                          isDarkMode ? 'bg-gray-500' : 'bg-gray-400'
-                                        }`}></div>
-                                      )}
-                                    </div>
-                                    <span className={`text-xs flex-1 text-left ${
-                                      isCurrent
-                                        ? isDarkMode ? 'text-blue-300' : 'text-blue-700'
-                                        : isCompleted
-                                          ? isDarkMode ? 'text-green-300' : 'text-green-700'
-                                          : isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                                    }`}>
-                                      {step}
-                                    </span>
-                                  </div>
-                                  
-                                  {/* 顯示步驟的詳細結果 */}
-                                  {hasResult && (
-                                    <div className={`px-6 pb-3 text-xs ${
-                                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                                    }`}>
-                                      <div className={`p-3 rounded-md ${
-                                        isDarkMode ? 'bg-gray-800/50' : 'bg-white/80'
-                                      } border ${
-                                        isDarkMode ? 'border-gray-700' : 'border-gray-200'
-                                      }`}>
-                                        <div className="relative">
-                                          <div 
-                                            className={`overflow-hidden transition-all duration-300 ${
-                                              expandedSteps.has(index) ? '' : 'max-h-24'
-                                            }`}
-                                          >
-                                            <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed">
-                                              {hasResult}
-                                            </pre>
-                                          </div>
-                                          {/* 漸變遮罩效果（只在收合時顯示） */}
-                                          {!expandedSteps.has(index) && (
-                                            <div className={`absolute bottom-0 left-0 right-0 h-12 pointer-events-none ${
-                                              isDarkMode 
-                                                ? 'bg-gradient-to-t from-gray-800/50 to-transparent' 
-                                                : 'bg-gradient-to-t from-white/80 to-transparent'
-                                            }`} />
-                                          )}
-                                          <button
-                                            onClick={() => {
-                                              const newExpanded = new Set(expandedSteps);
-                                              if (expandedSteps.has(index)) {
-                                                newExpanded.delete(index);
-                                              } else {
-                                                newExpanded.add(index);
-                                              }
-                                              setExpandedSteps(newExpanded);
-                                            }}
-                                            className={`mt-2 text-xs px-2 py-1 rounded transition-colors ${
-                                              isDarkMode
-                                                ? 'bg-blue-900/30 text-blue-400 hover:bg-blue-900/50'
-                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                                            }`}
-                                          >
-                                            {expandedSteps.has(index) ? '收起 ▲' : '展開 ▼'}
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {!aiLoadingStates?.thinkingSteps && (
-                        <p className={`text-xs mt-1 ${
-                          isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                        }`}>
-                          請稍候片刻
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : aiResult ? (
-              <div className="space-y-4">
-                <div className={`p-4 rounded-lg ${
-                  isDarkMode ? 'bg-dark-bg-tertiary' : 'bg-gray-50'
-                }`}>
-                  <pre className={`text-sm whitespace-pre-wrap font-sans ${
-                    isDarkMode ? 'text-gray-200' : 'text-gray-800'
-                  }`}>
-                    {aiResult}
-                  </pre>
-                </div>
-                
-                <button
-                  onClick={copyToClipboard}
-                  className={`w-full py-2 px-4 text-white rounded-lg transition-colors flex items-center justify-center gap-2 ${
-                    isDarkMode 
-                      ? 'bg-blue-700 hover:bg-blue-800' 
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
-                >
-                  <span>📋</span>
-                  複製結果
-                </button>
-              </div>
-            ) : (
-              <div className={`text-center mt-8 ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                <div className="text-4xl mb-4">🤖</div>
-                <p className="text-sm">
-                  使用 AI 功能來分析你的白板內容
-                </p>
-                <div className={`mt-6 space-y-2 text-xs ${
-                  isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                }`}>
-                  <p>• 右鍵便利貼 → AI 發想</p>
-                  <p>• 左側工具欄 → AI 分析</p>
-                  <p>• 左側工具欄 → AI 總結</p>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       )}
@@ -687,7 +440,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
             <h2 className={`text-lg font-semibold ${
               isDarkMode ? 'text-gray-200' : 'text-gray-800'
             }`}>
-              {activeTab === 'ai' ? 'AI 結果' : '專案管理'}
+              專案管理
             </h2>
             <button
               onClick={() => setIsCollapsed(true)}
@@ -704,20 +457,15 @@ const SidePanel: React.FC<SidePanelProps> = ({
           </div>
           
           {/* 內容區域 */}
-          <div className="flex-1 overflow-y-auto">
-            {aiResult && (
-              <div className="p-4">
-                <div className={`rounded-lg p-4 ${
-                  isDarkMode 
-                    ? 'bg-dark-bg-tertiary text-gray-300' 
-                    : 'bg-gray-50 text-gray-700'
-                }`}>
-                  <div className="prose prose-sm max-w-none whitespace-pre-wrap">
-                    {aiResult}
-                  </div>
-                </div>
-              </div>
-            )}
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className={`text-center mt-8 ${
+              isDarkMode ? 'text-gray-400' : 'text-gray-500'
+            }`}>
+              <div className="text-4xl mb-4">📁</div>
+              <p className="text-sm">
+                專案管理功能僅在桌面版提供完整支援
+              </p>
+            </div>
           </div>
         </div>
       </div>

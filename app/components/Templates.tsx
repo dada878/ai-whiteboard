@@ -238,7 +238,7 @@ const Templates: React.FC<TemplatesProps> = ({ isOpen, onClose, onApplyTemplate 
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* 背景遮罩 */}
       <div 
-        className="absolute inset-0 bg-black bg-opacity-50"
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
         onClick={onClose}
       />
       

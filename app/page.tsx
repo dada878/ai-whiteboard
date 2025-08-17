@@ -57,9 +57,9 @@ export default function Home() {
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <Header onShowPlusWelcome={handleShowPlusWelcome} />
-      <div className="flex-1">
+      <div className="flex-1 overflow-hidden">
         <Whiteboard />
       </div>
       <PlusWelcomeDialog 

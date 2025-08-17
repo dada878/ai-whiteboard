@@ -9,6 +9,7 @@ interface GroupComponentProps {
   group: GroupType;
   bounds: { x: number; y: number; width: number; height: number };
   isSelected: boolean;
+  isDragHovered?: boolean; // 是否被拖曳懸停
   zoomLevel?: number;
   shouldAutoFocus?: boolean;
   onAutoFocusHandled?: () => void;
@@ -38,6 +39,7 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
   group,
   bounds,
   isSelected,
+  isDragHovered = false,
   zoomLevel = 1,
   shouldAutoFocus = false,
   onAutoFocusHandled,
@@ -78,6 +80,15 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
 
   const handleNameClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
+    setIsEditingName(true);
+    setTempName(group.name);
+  };
+  
+  const handleNameDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    // 雙擊也進入編輯模式，但不會冒泡到畫布
     setIsEditingName(true);
     setTempName(group.name);
   };
@@ -107,19 +118,21 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    if (!isEditingName) {
-      const isMultiSelect = e.ctrlKey || e.metaKey;
-      console.log(`GROUP_SELECT: Click ${group.id}, multiSelect: ${isMultiSelect}`);
-      onSelect(isMultiSelect);
-    }
+    // Click 事件現在不處理選擇，因為 mouseDown 已經處理了
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0 && !isEditingName) { // 左鍵點擊且非編輯模式
       e.stopPropagation();
-      // 只處理拖曳，不處理選擇
+      
       const isMultiSelect = e.ctrlKey || e.metaKey;
-      if (onStartDrag && !isMultiSelect) {
+      
+      // 立即處理選擇
+      console.log(`GROUP_SELECT: MouseDown ${group.id}, multiSelect: ${isMultiSelect}`);
+      onSelect(isMultiSelect);
+      
+      // 啟動拖曳（不管是否為多選）
+      if (onStartDrag) {
         onStartDrag(e);
       }
     }
@@ -132,6 +145,10 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
         onClick={handleClick}
         onMouseDown={handleMouseDown}
         onContextMenu={handleRightClick}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+        }}
       >
         <rect
           x={bounds.x}
@@ -139,63 +156,27 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
           width={bounds.width}
           height={bounds.height}
           fill={group.color}
-          fillOpacity={isChildGroup ? "0.3" : "0.5"}
-          stroke={isSelected ? "rgb(59, 130, 246)" : group.color}
-          strokeWidth={isSelected ? "3" : isChildGroup ? "3" : "2"}
-          strokeDasharray={isSelected ? "6,3" : isChildGroup ? "8,4" : "5,3"}
+          fillOpacity={
+            isDragHovered ? "0.8" : "0.5"
+          }
+          stroke={
+            isDragHovered ? "rgb(34, 197, 94)" : 
+            isSelected ? "rgb(59, 130, 246)" : group.color
+          }
+          strokeWidth={
+            isDragHovered ? "4" :
+            isSelected ? "3" : isChildGroup ? "3" : "2"
+          }
+          strokeDasharray={
+            isDragHovered ? "8,4" :
+            isSelected ? "6,3" : isChildGroup ? "8,4" : "5,3"
+          }
           rx="8"
           style={{ pointerEvents: 'all', cursor: 'move' }}
           vectorEffect="non-scaling-stroke"
         />
         
-        {/* 選中時的額外邊框 */}
-        {isSelected && (
-          <rect
-            x={bounds.x - 4}
-            y={bounds.y - 4}
-            width={bounds.width + 8}
-            height={bounds.height + 8}
-            fill="none"
-            stroke="rgb(59, 130, 246)"
-            strokeWidth="2"
-            strokeDasharray="none"
-            rx="12"
-            style={{ pointerEvents: 'none' }}
-            vectorEffect="non-scaling-stroke"
-          />
-        )}
         
-        {/* 子群組標示 */}
-        {isChildGroup && (
-          <rect
-            x={bounds.x + 4}
-            y={bounds.y + 4}
-            width={bounds.width - 8}
-            height={bounds.height - 8}
-            fill="none"
-            stroke={group.color}
-            strokeWidth="1"
-            strokeDasharray="2,2"
-            rx="6"
-            vectorEffect="non-scaling-stroke"
-          />
-        )}
-        
-        {/* 父群組標示（如果有子群組） */}
-        {hasChildGroups && (
-          <rect
-            x={bounds.x - 2}
-            y={bounds.y - 2}
-            width={bounds.width + 4}
-            height={bounds.height + 4}
-            fill="none"
-            stroke="#8B5CF6"
-            strokeWidth="2"
-            strokeDasharray="10,5"
-            rx="10"
-            vectorEffect="non-scaling-stroke"
-          />
-        )}
         
         {/* 群組名稱 */}
         {isEditingName ? (
@@ -233,6 +214,7 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
             fontWeight="700"
             style={{ cursor: 'text' }}
             onClick={handleNameClick}
+            onDoubleClick={handleNameDoubleClick}
           >
             {group.name}
           </text>

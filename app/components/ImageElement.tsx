@@ -16,7 +16,7 @@ interface ImageElementProps {
   isHoveredForConnection?: boolean; // 是否為連接懸停目標
   zoomLevel: number;
   panOffset: { x: number; y: number };
-  onSelect: () => void;
+  onSelect: (isMultiSelect?: boolean) => void;
   onUpdatePosition: (x: number, y: number) => void;
   onUpdateSize: (width: number, height: number) => void;
   onDelete: () => void;
@@ -297,6 +297,12 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
           
           e.preventDefault();
           e.stopPropagation();
+          
+          // 檢查是否按下 Ctrl/Cmd 鍵
+          const isMultiSelect = e.ctrlKey || e.metaKey;
+          
+          // 立即處理選擇
+          onSelect(isMultiSelect);
           
           // 開始拖曳狀態
           setDragState({

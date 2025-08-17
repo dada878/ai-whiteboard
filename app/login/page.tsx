@@ -8,23 +8,23 @@ import { useTheme } from '../contexts/ThemeContext';
 import Link from 'next/link';
 
 export default function LoginPage() {
-  const { user, isLoading } = useAuth();
+  const { user, loading } = useAuth();
   const { isDarkMode } = useTheme();
   const router = useRouter();
 
   useEffect(() => {
     // 如果用戶已登入，導向到主應用
-    if (user && !isLoading) {
+    if (user && !loading) {
       router.push('/');
     }
-  }, [user, isLoading, router]);
+  }, [user, loading, router]);
 
   const handleGoogleLogin = () => {
     signIn('google', { callbackUrl: '/' });
   };
 
   // 如果正在載入，顯示載入畫面
-  if (isLoading) {
+  if (loading) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${
         isDarkMode ? 'bg-dark-bg' : 'bg-gray-50'

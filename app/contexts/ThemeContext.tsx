@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext } from 'react';
 
 interface ThemeContextType {
   isDarkMode: boolean;
@@ -10,38 +10,16 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [isDarkMode, setIsDarkMode] = useState(false);
-
-  useEffect(() => {
-    // Check localStorage for saved theme preference
-    const savedTheme = localStorage.getItem('darkMode');
-    if (savedTheme !== null) {
-      setIsDarkMode(JSON.parse(savedTheme));
-    } else {
-      // Check system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setIsDarkMode(prefersDark);
+  // 固定返回亮色模式，不提供切換功能
+  const value = {
+    isDarkMode: false,
+    toggleDarkMode: () => {
+      // 空函數，不執行任何操作
     }
-  }, []);
-
-  useEffect(() => {
-    // Save theme preference to localStorage
-    localStorage.setItem('darkMode', JSON.stringify(isDarkMode));
-    
-    // Apply theme to document
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [isDarkMode]);
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(prev => !prev);
   };
 
   return (
-    <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );

@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { StickyNote } from '../types';
-import { useTheme } from '../contexts/ThemeContext';
 
 interface StickyNoteComponentProps {
   note: StickyNote;
@@ -17,7 +16,7 @@ interface StickyNoteComponentProps {
   zoomLevel?: number;
   panOffset?: { x: number; y: number };
   autoEdit?: boolean;
-  onSelect: () => void;
+  onSelect: (isMultiSelect?: boolean) => void;
   onUpdate: (updates: Partial<StickyNote>) => void;
   onDelete: () => void;
   onAIBrainstorm: () => void;
@@ -35,8 +34,12 @@ interface StickyNoteComponentProps {
   viewportToLogical?: (viewportX: number, viewportY: number) => { x: number; y: number };
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  onDragOverGroup?: (noteId: string, x: number, y: number, width: number, height: number) => void;
+  onDragEndGroup?: (noteId: string, x: number, y: number, width: number, height: number) => void;
   // AI loading 狀態
   isAILoading?: boolean;
+  // 主題狀態
+  isDarkMode?: boolean;
 }
 
 const COLORS = [
@@ -80,10 +83,11 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
   viewportToLogical,
   onDragStart,
   onDragEnd,
-  isAILoading = false
+  onDragOverGroup,
+  onDragEndGroup,
+  isAILoading = false,
+  isDarkMode = false
 }) => {
-  const { isDarkMode } = useTheme();
-  
   // 狀態管理
   const [isEditing, setIsEditing] = useState(false);
   const [content, setContent] = useState(note.content);
@@ -216,11 +220,22 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
         const newX = dragState.initialNoteX + deltaX;
         const newY = dragState.initialNoteY + deltaY;
         onUpdate({ x: newX, y: newY });
+        
+        // 檢查是否拖曳到群組上方
+        if (onDragOverGroup) {
+          onDragOverGroup(note.id, newX, newY, note.width, note.height);
+        }
       }
     };
 
     const handleGlobalMouseUp = () => {
       const wasDragging = dragState.isDragging;
+      
+      // 如果正在拖曳且是單選狀態，檢查是否要添加到群組
+      if (wasDragging && !isMultiSelected && onDragEndGroup) {
+        onDragEndGroup(note.id, note.x, note.y, note.width, note.height);
+      }
+      
       setDragState(null);
       
       // 如果正在拖曳，觸發拖曳結束事件
@@ -425,6 +440,12 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
     // 記錄點擊時是否已選取
     setWasSelectedOnMouseDown(isSelected);
     
+    // 檢查是否按下 Ctrl/Cmd 鍵
+    const isMultiSelect = e.ctrlKey || e.metaKey;
+    
+    // 立即處理選擇
+    onSelect(isMultiSelect);
+    
     // 開始拖曳狀態
     setDragState({
       isDragging: false,
@@ -433,9 +454,6 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
       initialNoteX: note.x,
       initialNoteY: note.y
     });
-    
-    // 選中便利貼
-    onSelect();
   };
 
 
@@ -653,41 +671,23 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
           <div
             className={`w-full h-full rounded-lg shadow-lg border-2 transition-all ${
               isAILoading
-                ? `shadow-2xl ring-4 ring-offset-2 ${
-                    isDarkMode 
-                      ? 'border-blue-400 ring-blue-400/50 ring-offset-gray-900 shadow-blue-400/30' 
-                      : 'border-blue-500 ring-blue-400/60 ring-offset-white shadow-blue-400/40'
-                  }`
+                ? 'shadow-2xl ring-4 ring-offset-2 border-blue-500 ring-blue-400/60 ring-offset-white shadow-blue-400/40'
                 : dragState?.isDragging
                 ? 'cursor-grabbing border-blue-500'
                 : isConnecting 
-                ? `shadow-xl ring-2 ${
-                    isDarkMode ? 'border-green-400 ring-green-400/30' : 'border-green-500 ring-green-300'
-                  }` 
+                ? 'shadow-xl ring-2 border-green-500 ring-green-300' 
                 : isHoveredForConnection
-                ? `shadow-xl ring-2 cursor-pointer ${
-                    isDarkMode ? 'border-purple-900 ring-purple-900/20' : 'border-purple-500 ring-purple-300'
-                  }`
+                ? 'shadow-xl ring-2 cursor-pointer border-purple-500 ring-purple-300'
                 : isSelected 
-                ? `shadow-xl ${
-                    isDarkMode ? 'border-blue-900' : 'border-blue-500'
-                  }` 
+                ? 'shadow-xl border-blue-500' 
                 : isPreviewSelected
-                ? `shadow-lg border-dashed ${
-                    isDarkMode ? 'border-blue-900' : 'border-blue-300'
-                  }`
-                : isDarkMode 
-                ? 'border-gray-700'
+                ? 'shadow-lg border-dashed border-blue-300'
                 : 'border-gray-300'
             }`}
             style={{ 
-              backgroundColor: isDarkMode 
-                ? note.color + 'CC' // 在暗色模式下使用較高的不透明度
-                : note.color,
+              backgroundColor: note.color,
               borderColor: dragState?.isDragging 
                 ? undefined // 拖曳時不設定 borderColor，讓 className 的 border-blue-500 生效
-                : isDarkMode && !isSelected && !isPreviewSelected && !isConnecting && !isHoveredForConnection
-                ? COLORS.find(c => c.color === note.color)?.border + '60' // 暗色模式下邊框顏色更淡
                 : undefined
             }}
           >
@@ -1128,11 +1128,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
               <div className="w-12 h-12 border-4 border-blue-200/50 rounded-full" />
               <div className="absolute top-0 left-0 w-12 h-12 border-4 border-transparent border-t-blue-500 border-r-blue-500 rounded-full animate-spin" />
             </div>
-            <span className={`text-xs font-bold px-3 py-1.5 rounded-full shadow-lg animate-pulse ${
-              isDarkMode 
-                ? 'text-blue-100 bg-blue-600/90' 
-                : 'text-white bg-blue-500/90'
-            }`}>
+            <span className="text-xs font-bold px-3 py-1.5 rounded-full shadow-lg animate-pulse text-white bg-blue-500/90">
               ✨ AI 發想中
             </span>
           </div>
@@ -1147,21 +1143,13 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
             onClick={() => setShowContextMenu(false)}
           />
           <div
-            className={`context-menu fixed z-50 rounded-xl shadow-2xl border py-2 min-w-40 backdrop-blur-sm ${
-              isDarkMode 
-                ? 'bg-dark-bg-secondary border-gray-700' 
-                : 'bg-white border-gray-200'
-            }`}
+            className="context-menu fixed z-50 rounded-xl shadow-2xl border py-2 min-w-40 backdrop-blur-sm bg-white border-gray-200"
             style={{
               left: Math.min(menuPosition.x + 10, window.innerWidth - 200),
               top: Math.min(menuPosition.y + 10, window.innerHeight - 200),
             }}
           >
-            <div className={`px-3 py-1 text-xs font-medium border-b mb-1 ${
-              isDarkMode 
-                ? 'text-gray-400 border-gray-700' 
-                : 'text-gray-500 border-gray-100'
-            }`}>
+            <div className="px-3 py-1 text-xs font-medium border-b mb-1 text-gray-500 border-gray-100">
               {isMultiSelected ? '批量操作' : '便利貼操作'}
             </div>
             {!isMultiSelected && (
