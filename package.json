@@ -9,7 +9,7 @@
     "lint": "next lint",
     "version:update": "node scripts/update-version.js",
     "hooks:install": "node scripts/install-hooks.js",
-    "postinstall": "npm run hooks:install"
+    "prepare": "node scripts/install-hooks.js"
   },
   "dependencies": {
     "@auth/firebase-adapter": "^2.10.0",

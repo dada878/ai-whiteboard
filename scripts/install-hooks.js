@@ -4,14 +4,20 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
+// 檢查是否在 CI/CD 或 Docker build 環境
+if (process.env.CI || process.env.DOCKER_BUILD || !fs.existsSync('.git')) {
+  console.log('📦 偵測到 build 環境，跳過 Git hooks 安裝');
+  process.exit(0);
+}
+
 console.log('🔧 正在安裝 Git Hooks...');
 
 // 檢查是否在 git repository 中
 try {
   execSync('git rev-parse --git-dir', { stdio: 'ignore' });
 } catch (error) {
-  console.error('❌ 錯誤：這不是一個 Git repository');
-  process.exit(1);
+  console.log('⚠️  不在 Git repository 中，跳過 hooks 安裝');
+  process.exit(0);
 }
 
 // 取得專案根目錄和 .git/hooks 目錄
