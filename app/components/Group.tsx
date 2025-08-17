@@ -12,12 +12,15 @@ interface GroupComponentProps {
   zoomLevel?: number;
   shouldAutoFocus?: boolean;
   onAutoFocusHandled?: () => void;
-  onSelect: () => void;
+  onSelect: (isMultiSelect?: boolean) => void;
   onUpdateName: (name: string) => void;
   onUpdateColor: (color: string) => void;
   onUngroup: () => void;
   onDelete: () => void;
   onStartDrag?: (e: React.MouseEvent) => void;
+  onCreateParentGroup?: () => void; // 創建父群組
+  isChildGroup?: boolean; // 是否為子群組
+  hasChildGroups?: boolean; // 是否有子群組
 }
 
 const GROUP_COLORS = [
@@ -43,7 +46,10 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
   onUpdateColor,
   onUngroup,
   onDelete,
-  onStartDrag
+  onStartDrag,
+  onCreateParentGroup,
+  isChildGroup = false,
+  hasChildGroups = false
 }) => {
   const { isDarkMode } = useTheme();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -97,20 +103,23 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
     e.stopPropagation();
     setMenuPosition({ x: e.clientX, y: e.clientY });
     setShowContextMenu(true);
-    onSelect();
+    onSelect(false); // 右鍵不使用多選
   };
 
   const handleClick = (e: React.MouseEvent) => {
     if (!isEditingName) {
-      onSelect();
+      const isMultiSelect = e.ctrlKey || e.metaKey;
+      console.log(`GROUP_SELECT: Click ${group.id}, multiSelect: ${isMultiSelect}`);
+      onSelect(isMultiSelect);
     }
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0 && !isEditingName) { // 左鍵點擊且非編輯模式
       e.stopPropagation();
-      onSelect();
-      if (onStartDrag) {
+      // 只處理拖曳，不處理選擇
+      const isMultiSelect = e.ctrlKey || e.metaKey;
+      if (onStartDrag && !isMultiSelect) {
         onStartDrag(e);
       }
     }
@@ -130,14 +139,63 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
           width={bounds.width}
           height={bounds.height}
           fill={group.color}
-          fillOpacity="0.5"
+          fillOpacity={isChildGroup ? "0.3" : "0.5"}
           stroke={isSelected ? "rgb(59, 130, 246)" : group.color}
-          strokeWidth={isSelected ? "3" : "2"}
-          strokeDasharray={isSelected ? "6,3" : "5,3"}
+          strokeWidth={isSelected ? "3" : isChildGroup ? "3" : "2"}
+          strokeDasharray={isSelected ? "6,3" : isChildGroup ? "8,4" : "5,3"}
           rx="8"
           style={{ pointerEvents: 'all', cursor: 'move' }}
           vectorEffect="non-scaling-stroke"
         />
+        
+        {/* 選中時的額外邊框 */}
+        {isSelected && (
+          <rect
+            x={bounds.x - 4}
+            y={bounds.y - 4}
+            width={bounds.width + 8}
+            height={bounds.height + 8}
+            fill="none"
+            stroke="rgb(59, 130, 246)"
+            strokeWidth="2"
+            strokeDasharray="none"
+            rx="12"
+            style={{ pointerEvents: 'none' }}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+        
+        {/* 子群組標示 */}
+        {isChildGroup && (
+          <rect
+            x={bounds.x + 4}
+            y={bounds.y + 4}
+            width={bounds.width - 8}
+            height={bounds.height - 8}
+            fill="none"
+            stroke={group.color}
+            strokeWidth="1"
+            strokeDasharray="2,2"
+            rx="6"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+        
+        {/* 父群組標示（如果有子群組） */}
+        {hasChildGroups && (
+          <rect
+            x={bounds.x - 2}
+            y={bounds.y - 2}
+            width={bounds.width + 4}
+            height={bounds.height + 4}
+            fill="none"
+            stroke="#8B5CF6"
+            strokeWidth="2"
+            strokeDasharray="10,5"
+            rx="10"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
         
         {/* 群組名稱 */}
         {isEditingName ? (
@@ -257,6 +315,24 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
             <hr className={`my-1 ${
               isDarkMode ? 'border-gray-700' : 'border-gray-100'
             }`} />
+            
+            {/* 創建父群組選項 */}
+            {onCreateParentGroup && (
+              <button
+                className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
+                  isDarkMode
+                    ? 'text-dark-text hover:bg-purple-900/30 hover:text-purple-400'
+                    : 'text-gray-700 hover:bg-purple-50 hover:text-purple-600'
+                }`}
+                onClick={() => {
+                  onCreateParentGroup();
+                  setShowContextMenu(false);
+                }}
+              >
+                <span className="text-base">📁</span>
+                <span>創建父群組</span>
+              </button>
+            )}
             
             <button
               className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${

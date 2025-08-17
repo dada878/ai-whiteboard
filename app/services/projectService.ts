@@ -185,17 +185,24 @@ export class ProjectService {
     const filtered = projects.filter(p => p.id !== projectId);
     
     try {
+      // 更新專案列表
       localStorage.setItem(this.getProjectsKey(), JSON.stringify(filtered));
+      
+      // 刪除專案資料
       localStorage.removeItem(this.getProjectDataKey(projectId));
       
-      // 如果刪除的是當前專案，切換到第一個專案
+      // 如果刪除的是當前專案，清除當前專案設定
       if (this.getCurrentProjectId() === projectId) {
         if (filtered.length > 0) {
           this.setCurrentProject(filtered[0].id);
         } else {
+          // 移除當前專案設定
           localStorage.removeItem(this.getCurrentProjectKey());
+          // 同時移除舊版的 key（向後相容）
+          localStorage.removeItem(CURRENT_PROJECT_KEY);
         }
       }
+      
     } catch (error) {
       console.error('Failed to delete project:', error);
       throw error;

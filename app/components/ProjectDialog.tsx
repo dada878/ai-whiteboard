@@ -70,20 +70,28 @@ export default function ProjectDialog({
     if (!confirm('確定要刪除這個專案嗎？此操作無法復原。')) return;
 
     try {
+      // 計算刪除後的專案列表
+      const remainingProjects = projects.filter(p => p.id !== projectId);
+      
       // 從本地刪除專案
       ProjectService.deleteProject(projectId);
       
-      setProjects(projects.filter(p => p.id !== projectId));
+      // 更新 UI 中的專案列表
+      setProjects(remainingProjects);
       
       // 如果刪除的是當前專案，切換到第一個專案
-      if (projectId === currentProjectId && projects.length > 1) {
-        const remainingProjects = projects.filter(p => p.id !== projectId);
+      if (projectId === currentProjectId) {
         if (remainingProjects.length > 0) {
           onSelectProject(remainingProjects[0].id);
+        } else {
+          // 如果沒有剩餘專案，可能需要創建一個新的或者處理空狀態
+          onClose();
         }
       }
     } catch (error) {
       console.error('刪除專案失敗:', error);
+      // 重新載入專案列表以確保 UI 與實際狀態同步
+      loadProjects();
     }
   };
 

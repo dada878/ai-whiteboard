@@ -174,7 +174,6 @@ export class SyncService {
               const now = new Date();
               const lastLocalChange = this.syncStatus.lastLocalChangeTime;
               if (lastLocalChange && (now.getTime() - lastLocalChange.getTime()) < 10000) {
-                console.log('跳過雲端同步，因為用戶正在進行本地操作');
                 return;
               }
               
@@ -210,18 +209,8 @@ export class SyncService {
 
   // 保存專案資料到雲端
   static async saveProjectData(userId: string, projectId: string, data: WhiteboardData): Promise<void> {
-    console.log('=== SyncService.saveProjectData ===');
-    console.log('UserId:', userId);
-    console.log('ProjectId:', projectId);
-    console.log('Data contains:', {
-      notes: data.notes?.length || 0,
-      edges: data.edges?.length || 0,
-      groups: data.groups?.length || 0,
-      images: data.images?.length || 0
-    });
     
     if (!userId || !projectId) {
-      console.log('Missing userId or projectId, skipping sync');
       return;
     }
     
@@ -239,7 +228,6 @@ export class SyncService {
         // Only filter out base64 encoded images
         return !img.url.startsWith('data:');
       });
-      console.log(`Filtering images: ${originalImages.length} total, ${cloudImages.length} will be synced to cloud`);
       
       const cloudData = {
         ...data,

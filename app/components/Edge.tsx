@@ -148,18 +148,15 @@ const EdgeComponent: React.FC<EdgeComponentProps> = ({
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Delete button mousedown for edge:', edge.id);
           }}
           onMouseUp={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Delete button mouseup for edge:', edge.id);
             onDelete?.();
           }}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Delete button clicked for edge:', edge.id);
             onDelete?.();
           }}
         >

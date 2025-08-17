@@ -40,6 +40,7 @@ const Whiteboard: React.FC = () => {
   const [selectedNote, setSelectedNote] = useState<string | null>(null);
   const [selectedNotes, setSelectedNotes] = useState<string[]>([]); // 多選便利貼
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null); // 選中的群組
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]); // 多選群組
   const [autoEditNoteId, setAutoEditNoteId] = useState<string | null>(null); // 需要自動編輯的便利貼 ID
   const [previewSelectedNotes, setPreviewSelectedNotes] = useState<string[]>([]); // 框選預覽
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
@@ -95,6 +96,7 @@ const Whiteboard: React.FC = () => {
     targetNotes?: unknown[];
   } | null>(null);
   const [autoFocusGroupId, setAutoFocusGroupId] = useState<string | null>(null);
+  const [recentDragSelect, setRecentDragSelect] = useState(false);
 
   // Plus 權限檢查
   const requirePlus = useCallback(() => {
@@ -305,7 +307,7 @@ const Whiteboard: React.FC = () => {
   }, [selectedNotes, copySelectedNotes]);
 
   // 群組管理功能
-  const createGroup = useCallback((noteIds: string[], imageIds: string[] = []) => {
+  const createGroup = useCallback((noteIds: string[], imageIds: string[] = [], parentGroupId?: string) => {
     if (noteIds.length + imageIds.length < 2) return null;
     
     saveToHistory(whiteboardData);
@@ -319,12 +321,23 @@ const Whiteboard: React.FC = () => {
       color: randomColor,
       createdAt: new Date(),
       noteIds: noteIds,
-      imageIds: imageIds
+      imageIds: imageIds,
+      parentGroupId: parentGroupId,
+      childGroupIds: []
     };
 
     updateWhiteboardData(prev => ({
       ...prev,
-      groups: [...(prev.groups || []), newGroup],
+      groups: [...(prev.groups || []), newGroup].map(group => {
+        // 如果是父群組，更新其 childGroupIds
+        if (parentGroupId && group.id === parentGroupId) {
+          return {
+            ...group,
+            childGroupIds: [...(group.childGroupIds || []), groupId]
+          };
+        }
+        return group;
+      }),
       notes: prev.notes.map(note => 
         noteIds.includes(note.id) 
           ? { ...note, groupId }
@@ -347,6 +360,83 @@ const Whiteboard: React.FC = () => {
     return groupId;
   }, [whiteboardData, saveToHistory]);
 
+  // 創建父群組
+  const createParentGroup = useCallback((childGroupIds: string[]) => {
+    console.log(`GROUP_SELECT: Creating parent group for [${childGroupIds.join(',')}]`);
+    
+    if (childGroupIds.length < 2) {
+      console.log(`GROUP_SELECT: Need at least 2 groups, got ${childGroupIds.length}`);
+      return null;
+    }
+    
+    console.log('GROUP_SELECT: Groups before creation:', whiteboardData.groups?.map(g => ({
+      id: g.id,
+      name: g.name,
+      parentGroupId: g.parentGroupId,
+      childGroupIds: g.childGroupIds,
+      noteIds: g.noteIds,
+      imageIds: g.imageIds
+    })));
+    
+    saveToHistory(whiteboardData);
+    const parentGroupId = uuidv4();
+    const groupColors = ['#E3F2FD', '#F3E5F5', '#E8F5E8', '#FFF3E0', '#FCE4EC'];
+    const randomColor = groupColors[Math.floor(Math.random() * groupColors.length)];
+    
+    const newParentGroup: Group = {
+      id: parentGroupId,
+      name: `父群組 ${(whiteboardData.groups || []).length + 1}`,
+      color: randomColor,
+      createdAt: new Date(),
+      noteIds: [],
+      imageIds: [],
+      childGroupIds: childGroupIds
+    };
+
+    console.log('GROUP_SELECT: New parent group:', {
+      id: newParentGroup.id,
+      name: newParentGroup.name,
+      childGroupIds: newParentGroup.childGroupIds
+    });
+
+    updateWhiteboardData(prev => {
+      const updatedGroups = [...(prev.groups || []), newParentGroup].map(group => {
+        // 更新子群組的 parentGroupId
+        if (childGroupIds.includes(group.id)) {
+          console.log(`GROUP_SELECT: Setting parentGroupId for child ${group.id} to ${parentGroupId}`);
+          return {
+            ...group,
+            parentGroupId: parentGroupId
+          };
+        }
+        return group;
+      });
+      
+      console.log('GROUP_SELECT: Groups after update:', updatedGroups.map(g => ({
+        id: g.id,
+        name: g.name,
+        parentGroupId: g.parentGroupId,
+        childGroupIds: g.childGroupIds,
+        noteIds: g.noteIds,
+        imageIds: g.imageIds
+      })));
+      
+      return {
+        ...prev,
+        groups: updatedGroups
+      };
+    });
+
+    setSelectedGroup(parentGroupId);
+    console.log('GROUP_SELECT: Clearing selection and focusing parent');
+    setSelectedGroups([]); // 清除多選狀態
+    setAutoFocusGroupId(parentGroupId);
+    
+    console.log('✅ createParentGroup completed, selected group:', parentGroupId);
+    
+    return parentGroupId;
+  }, [whiteboardData, saveToHistory]);
+
   const ungroupNotes = useCallback((groupId: string) => {
     saveToHistory(whiteboardData);
     const group = (whiteboardData.groups || []).find(g => g.id === groupId);
@@ -354,7 +444,25 @@ const Whiteboard: React.FC = () => {
 
     updateWhiteboardData(prev => ({
       ...prev,
-      groups: (prev.groups || []).filter(g => g.id !== groupId),
+      groups: (prev.groups || [])
+        .filter(g => g.id !== groupId)
+        .map(g => {
+          // 如果這個群組是被刪除群組的父群組，移除子群組關聯
+          if (g.childGroupIds?.includes(groupId)) {
+            return {
+              ...g,
+              childGroupIds: g.childGroupIds.filter(cid => cid !== groupId)
+            };
+          }
+          // 如果這個群組是被刪除群組的子群組，移除父群組關聯
+          if (g.parentGroupId === groupId) {
+            return {
+              ...g,
+              parentGroupId: undefined
+            };
+          }
+          return g;
+        }),
       notes: prev.notes.map(note => 
         note.groupId === groupId 
           ? { ...note, groupId: undefined }
@@ -381,22 +489,44 @@ const Whiteboard: React.FC = () => {
     const group = whiteboardData.groups?.find(g => g.id === groupId);
     if (!group) return null;
     
-    const groupNotes = getGroupNotes(groupId);
-    const groupImages = whiteboardData.images?.filter(img => img.groupId === groupId) || [];
+    // 收集所有元素：直接包含的便利貼/圖片 + 子群組的邊界
+    const allElements: Array<{x: number, y: number, width: number, height: number}> = [];
     
-    if (groupNotes.length === 0 && groupImages.length === 0) return null;
+    // 添加直接包含的便利貼
+    const groupNotes = getGroupNotes(groupId);
+    allElements.push(...groupNotes);
+    
+    // 添加直接包含的圖片
+    const groupImages = whiteboardData.images?.filter(img => img.groupId === groupId) || [];
+    allElements.push(...groupImages);
+    
+    // 遞歸添加子群組的邊界
+    if (group.childGroupIds && group.childGroupIds.length > 0) {
+      for (const childGroupId of group.childGroupIds) {
+        const childBounds = getGroupBounds(childGroupId);
+        if (childBounds) {
+          allElements.push({
+            x: childBounds.x,
+            y: childBounds.y,
+            width: childBounds.width,
+            height: childBounds.height
+          });
+        }
+      }
+    }
+    
+    if (allElements.length === 0) return null;
 
-    const allElements = [...groupNotes, ...groupImages];
     const minX = Math.min(...allElements.map(el => el.x));
     const minY = Math.min(...allElements.map(el => el.y));
     const maxX = Math.max(...allElements.map(el => el.x + el.width));
     const maxY = Math.max(...allElements.map(el => el.y + el.height));
 
     return {
-      x: minX - 10,
-      y: minY - 10,
-      width: maxX - minX + 20,
-      height: maxY - minY + 20
+      x: minX - 15,
+      y: minY - 15,
+      width: maxX - minX + 30,
+      height: maxY - minY + 30
     };
   }, [getGroupNotes, whiteboardData.groups, whiteboardData.images]);
 
@@ -429,8 +559,35 @@ const Whiteboard: React.FC = () => {
     const group = (whiteboardData.groups || []).find(g => g.id === groupId);
     if (!group) return;
 
-    // 刪除群組內的所有便利貼和相關連線
-    const noteIdsToDelete = group.noteIds;
+    // 收集所有要刪除的群組ID（包括子群組）
+    const getAllGroupsToDelete = (id: string): string[] => {
+      const currentGroup = whiteboardData.groups?.find(g => g.id === id);
+      if (!currentGroup) return [id];
+      
+      let groupsToDelete = [id];
+      if (currentGroup.childGroupIds) {
+        for (const childId of currentGroup.childGroupIds) {
+          groupsToDelete = groupsToDelete.concat(getAllGroupsToDelete(childId));
+        }
+      }
+      return groupsToDelete;
+    };
+
+    const allGroupIdsToDelete = getAllGroupsToDelete(groupId);
+    
+    // 收集所有要刪除的便利貼和圖片
+    const noteIdsToDelete: string[] = [];
+    const imageIdsToDelete: string[] = [];
+    
+    allGroupIdsToDelete.forEach(gId => {
+      const g = whiteboardData.groups?.find(group => group.id === gId);
+      if (g) {
+        noteIdsToDelete.push(...g.noteIds);
+        imageIdsToDelete.push(...(g.imageIds || []));
+      }
+    });
+
+    // 找到相關的連線
     const edgesToDelete = whiteboardData.edges.filter(edge => 
       noteIdsToDelete.includes(edge.from) || noteIdsToDelete.includes(edge.to)
     );
@@ -438,8 +595,20 @@ const Whiteboard: React.FC = () => {
     updateWhiteboardData(prev => ({
       ...prev,
       notes: prev.notes.filter(note => !noteIdsToDelete.includes(note.id)),
+      images: (prev.images || []).filter(img => !imageIdsToDelete.includes(img.id)),
       edges: prev.edges.filter(edge => !edgesToDelete.includes(edge)),
-      groups: (prev.groups || []).filter(g => g.id !== groupId)
+      groups: (prev.groups || [])
+        .filter(g => !allGroupIdsToDelete.includes(g.id))
+        .map(g => {
+          // 如果這個群組是被刪除群組的父群組，移除子群組關聯
+          if (g.childGroupIds?.some(cid => allGroupIdsToDelete.includes(cid))) {
+            return {
+              ...g,
+              childGroupIds: g.childGroupIds.filter(cid => !allGroupIdsToDelete.includes(cid))
+            };
+          }
+          return g;
+        })
     }));
 
     setSelectedGroup(null);
@@ -551,36 +720,60 @@ const Whiteboard: React.FC = () => {
   const handleGroupDrag = useCallback((groupId: string, deltaX: number, deltaY: number) => {
     if (!groupDragState || groupDragState.groupId !== groupId) return;
     
-    setWhiteboardData(prev => ({
-      ...prev,
-      notes: prev.notes.map(note => {
-        if (note.groupId === groupId) {
+    // 遞歸函數來移動群組及其所有子群組的內容
+    const moveGroupContent = (targetGroupId: string, dx: number, dy: number, notesToUpdate: StickyNote[], imagesToUpdate: any[]) => {
+      const group = whiteboardData.groups?.find(g => g.id === targetGroupId);
+      if (!group) return;
+      
+      // 移動直接包含的便利貼
+      notesToUpdate.forEach((note, index) => {
+        if (note.groupId === targetGroupId) {
           const initialPos = groupDragState.initialPositions[note.id];
           if (initialPos) {
-            return {
+            notesToUpdate[index] = {
               ...note,
-              x: initialPos.x + deltaX,
-              y: initialPos.y + deltaY
+              x: initialPos.x + dx,
+              y: initialPos.y + dy
             };
           }
         }
-        return note;
-      }),
-      images: (prev.images || []).map(img => {
-        if (img.groupId === groupId) {
+      });
+      
+      // 移動直接包含的圖片
+      imagesToUpdate.forEach((img, index) => {
+        if (img.groupId === targetGroupId) {
           const initialPos = groupDragState.initialPositions[img.id];
           if (initialPos) {
-            return {
+            imagesToUpdate[index] = {
               ...img,
-              x: initialPos.x + deltaX,
-              y: initialPos.y + deltaY
+              x: initialPos.x + dx,
+              y: initialPos.y + dy
             };
           }
         }
-        return img;
-      })
-    }));
-  }, [groupDragState]);
+      });
+      
+      // 遞歸處理子群組
+      if (group.childGroupIds && group.childGroupIds.length > 0) {
+        group.childGroupIds.forEach(childGroupId => {
+          moveGroupContent(childGroupId, dx, dy, notesToUpdate, imagesToUpdate);
+        });
+      }
+    };
+    
+    setWhiteboardData(prev => {
+      const notesToUpdate = [...prev.notes];
+      const imagesToUpdate = [...(prev.images || [])];
+      
+      moveGroupContent(groupId, deltaX, deltaY, notesToUpdate, imagesToUpdate);
+      
+      return {
+        ...prev,
+        notes: notesToUpdate,
+        images: imagesToUpdate
+      };
+    });
+  }, [groupDragState, whiteboardData.groups]);
 
 
   // 載入專案資料
@@ -921,7 +1114,27 @@ const Whiteboard: React.FC = () => {
 
       // 建立群組 (Ctrl/Cmd + G)
       if (isCtrlOrCmd && (event.key === 'g' || event.key === 'G') && !event.shiftKey) {
+        console.log(`GROUP_SELECT: Cmd+G detected, selectedGroups.length: ${selectedGroups.length}`);
         event.preventDefault();
+        
+        // 情況1: 多選了群組，創建父群組 (需要至少2個群組)
+        if (selectedGroups.length >= 2) {
+          console.log(`GROUP_SELECT: Cmd+G pressed with groups: [${selectedGroups.join(',')}]`);
+          createParentGroup(selectedGroups);
+          return;
+        }
+        
+        // 情況2: 選中了單個群組 + 其他元素，創建父群組
+        if (selectedGroup && (selectedNotes.length > 0 || selectedImages.length > 0)) {
+          // 先為便利貼和圖片創建新群組，然後創建父群組
+          const newGroupId = createGroup(selectedNotes, selectedImages);
+          if (newGroupId) {
+            createParentGroup([selectedGroup, newGroupId]);
+          }
+          return;
+        }
+        
+        // 情況3: 選中多個便利貼/圖片，創建普通群組
         if (selectedNotes.length + selectedImages.length >= 2) {
           createGroup(selectedNotes, selectedImages);
         }
@@ -1562,6 +1775,11 @@ const Whiteboard: React.FC = () => {
   const handleCanvasDoubleClick = useCallback((event: React.MouseEvent) => {
     const target = event.target as HTMLElement;
     
+    // 如果最近剛完成拖曳選取，阻止雙擊創建便利貼
+    if (recentDragSelect) {
+      return;
+    }
+    
     // 只檢查直接的便利貼點擊
     if (target.closest('.sticky-note')) {
       return;
@@ -1580,7 +1798,7 @@ const Whiteboard: React.FC = () => {
       
       addStickyNote(logicalX, logicalY);
     }
-  }, [addStickyNote, panOffset, zoomLevel]);
+  }, [addStickyNote, panOffset, zoomLevel, recentDragSelect]);
 
   // 縮放處理函數 - 高性能版本
   const handleZoom = useCallback((delta: number, centerX: number, centerY: number) => {
@@ -1720,6 +1938,18 @@ const Whiteboard: React.FC = () => {
       setSelectedImages(selectedImageIds);
       setIsSelecting(false);
       setPreviewSelectedNotes([]); // 清除預覽狀態
+      
+      // 檢查是否實際進行了拖曳（移動距離超過閾值）
+      const dragDistance = Math.hypot(
+        selectionEnd.x - selectionStart.x,
+        selectionEnd.y - selectionStart.y
+      );
+      
+      if (dragDistance > 5) { // 如果拖曳距離超過 5 像素
+        setRecentDragSelect(true);
+        // 300ms 後清除標記
+        setTimeout(() => setRecentDragSelect(false), 300);
+      }
     };
 
     // 添加全局事件監聽器
@@ -1921,6 +2151,98 @@ const Whiteboard: React.FC = () => {
     
     // 自動選中並進入編輯模式
     setSelectedNote(newNoteId);
+    setAutoEditNoteId(newNoteId);
+    
+  }, [whiteboardData, saveToHistory, updateWhiteboardData, addEdge]);
+
+  // 圖片快速連接：點擊圖片連接點直接創建新便利貼
+  const handleImageQuickConnect = useCallback((imageId: string, direction: 'top' | 'right' | 'bottom' | 'left') => {
+    const fromImage = whiteboardData.images?.find(img => img.id === imageId);
+    if (!fromImage) return;
+    
+    // 計算起始圖片的中心點
+    const fromX = fromImage.x + fromImage.width / 2;
+    const fromY = fromImage.y + fromImage.height / 2;
+    
+    // 根據方向計算角度
+    let angle = 0;
+    switch (direction) {
+      case 'top':
+        angle = -Math.PI / 2; // 向上
+        break;
+      case 'right':
+        angle = 0; // 向右
+        break;
+      case 'bottom':
+        angle = Math.PI / 2; // 向下
+        break;
+      case 'left':
+        angle = Math.PI; // 向左
+        break;
+    }
+    
+    // 新便利貼的尺寸
+    const newNoteWidth = 200;
+    const newNoteHeight = 200;
+    
+    // 計算距離參數
+    const gap = 15; // 與 Edge 組件中的 gap 保持一致
+    const defaultDistance = 180; // 預設延伸距離
+    
+    // 計算到圖片邊緣的距離
+    const getDistanceToEdge = (width: number, height: number, angleToEdge: number) => {
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
+      
+      if (Math.abs(Math.cos(angleToEdge)) > Math.abs(Math.sin(angleToEdge))) {
+        return halfWidth / Math.abs(Math.cos(angleToEdge));
+      } else {
+        return halfHeight / Math.abs(Math.sin(angleToEdge));
+      }
+    };
+    
+    // 計算起始圖片邊緣距離
+    const fromEdgeDistance = getDistanceToEdge(fromImage.width, fromImage.height, angle);
+    
+    // 計算新便利貼邊緣距離
+    const toEdgeDistance = getDistanceToEdge(newNoteWidth, newNoteHeight, angle);
+    
+    // 計算新便利貼的中心位置
+    // 總距離 = 起始邊緣 + gap + 預設距離 + gap + 新便利貼邊緣
+    const totalDistance = fromEdgeDistance + gap + defaultDistance + gap + toEdgeDistance;
+    const newNoteCenterX = fromX + Math.cos(angle) * totalDistance;
+    const newNoteCenterY = fromY + Math.sin(angle) * totalDistance;
+    
+    // 計算新便利貼的左上角位置
+    const newNoteX = newNoteCenterX - newNoteWidth / 2;
+    const newNoteY = newNoteCenterY - newNoteHeight / 2;
+    
+    const newNoteId = `note_${Date.now()}`;
+    const newNote: StickyNote = {
+      id: newNoteId,
+      x: newNoteX,
+      y: newNoteY,
+      width: newNoteWidth,
+      height: newNoteHeight,
+      content: '',
+      color: '#FEF3C7'
+    };
+    
+    // 保存歷史記錄
+    saveToHistory(whiteboardData);
+    
+    // 更新白板數據
+    updateWhiteboardData(prev => ({
+      ...prev,
+      notes: [...prev.notes, newNote]
+    }));
+    
+    // 創建連接
+    addEdge(imageId, newNoteId);
+    
+    // 自動選中並進入編輯模式
+    setSelectedNote(newNoteId);
+    setSelectedImage(null); // 清除圖片選取
     setAutoEditNoteId(newNoteId);
     
   }, [whiteboardData, saveToHistory, updateWhiteboardData, addEdge]);
@@ -3698,11 +4020,27 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
               );
             })()}
 
-            {/* 群組 */}
-            {(whiteboardData.groups || []).map(group => {
+            {/* 群組 - 只渲染頂層群組（沒有父群組的群組） */}
+            {(() => {
+              const allGroups = whiteboardData.groups || [];
+              const topLevelGroups = allGroups.filter(group => !group.parentGroupId);
+              
+              
+              return topLevelGroups.map(group => {
               const bounds = getGroupBounds(group.id);
               if (!bounds) return null;
-              const isSelected = selectedGroup === group.id;
+              const isSelected = selectedGroup === group.id || selectedGroups.includes(group.id);
+              if (group.id === 'c7243686-7cd7-472e-86e1-227228f0008a') {
+                console.log(`🔍 Group ${group.id} isSelected calculation:`);
+                console.log(`  - selectedGroup: ${selectedGroup}`);
+                console.log(`  - selectedGroups: ${JSON.stringify(selectedGroups)}`);
+                console.log(`  - selectedGroup === group.id: ${selectedGroup === group.id}`);
+                console.log(`  - selectedGroups.includes(group.id): ${selectedGroups.includes(group.id)}`);
+                console.log(`  - Final isSelected: ${isSelected}`);
+              }
+              const isChildGroup = !!group.parentGroupId;
+              const hasChildGroups = (group.childGroupIds?.length || 0) > 0;
+              
               return (
                 <GroupComponent
                   key={group.id}
@@ -3712,26 +4050,110 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                   zoomLevel={zoomLevel}
                   shouldAutoFocus={autoFocusGroupId === group.id}
                   onAutoFocusHandled={() => setAutoFocusGroupId(null)}
-                  onSelect={() => {
-                    setSelectedGroup(group.id);
-                    setSelectedNote(null);
-                    // 選中群組時，也選中群組內的所有便利貼
-                    setSelectedNotes(group.noteIds);
+                  onSelect={(isMultiSelect?: boolean) => {
+                    console.log(`GROUP_SELECT: ${group.id} selected, multiSelect: ${isMultiSelect}, current: [${selectedGroups.join(',')}]`);
+                    
+                    if (isMultiSelect) {
+                      // 多選模式：添加到群組選擇列表
+                      if (selectedGroups.includes(group.id)) {
+                        console.log(`GROUP_SELECT: Remove ${group.id}`);
+                        setSelectedGroups(prev => prev.filter(id => id !== group.id));
+                      } else {
+                        console.log(`GROUP_SELECT: Add ${group.id}`);
+                        setSelectedGroups(prev => [...prev, group.id]);
+                      }
+                    } else {
+                      // 單選模式：清除其他選擇，但將當前群組加入多選列表
+                      console.log(`GROUP_SELECT: Single select ${group.id}`);
+                      setSelectedGroup(group.id);
+                      setSelectedGroups([group.id]); // 加入多選列表而不是清空
+                      setSelectedNote(null);
+                      setSelectedNotes([]);
+                      setSelectedImage(null);
+                      setSelectedImages([]);
+                      setSelectedEdge(null);
+                    }
+                  }}
+                  onStartDrag={(e) => {
+                    console.log(`GROUP_SELECT: Starting drag for group ${group.id}`);
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    
+                    // 遞歸收集群組及其子群組內所有元素的初始位置
+                    const collectInitialPositions = (targetGroupId: string, positions: {[key: string]: {x: number, y: number}}) => {
+                      const targetGroup = whiteboardData.groups?.find(g => g.id === targetGroupId);
+                      if (!targetGroup) return;
+                      
+                      // 收集直接包含的便利貼
+                      whiteboardData.notes.forEach(note => {
+                        if (note.groupId === targetGroupId) {
+                          positions[note.id] = {x: note.x, y: note.y};
+                        }
+                      });
+                      
+                      // 收集直接包含的圖片
+                      (whiteboardData.images || []).forEach(img => {
+                        if (img.groupId === targetGroupId) {
+                          positions[img.id] = {x: img.x, y: img.y};
+                        }
+                      });
+                      
+                      // 遞歸處理子群組
+                      if (targetGroup.childGroupIds && targetGroup.childGroupIds.length > 0) {
+                        targetGroup.childGroupIds.forEach(childGroupId => {
+                          collectInitialPositions(childGroupId, positions);
+                        });
+                      }
+                    };
+                    
+                    const initialPositions: {[key: string]: {x: number, y: number}} = {};
+                    collectInitialPositions(group.id, initialPositions);
+                    
+                    console.log(`GROUP_SELECT: Collected ${Object.keys(initialPositions).length} initial positions`);
+                    
+                    setGroupDragState({
+                      isDragging: true,
+                      groupId: group.id,
+                      startX,
+                      startY,
+                      initialPositions
+                    });
                   }}
                   onUpdateName={(name) => updateGroupName(group.id, name)}
                   onUpdateColor={(color) => updateGroupColor(group.id, color)}
                   onUngroup={() => ungroupNotes(group.id)}
                   onDelete={() => deleteGroup(group.id)}
+                  onCreateParentGroup={() => createParentGroup([group.id])}
+                  isChildGroup={isChildGroup}
+                  hasChildGroups={hasChildGroups}
                   onStartDrag={(e) => {
-                    // 初始化群組拖曳狀態
-                    const groupNotes = getGroupNotes(group.id);
-                    const groupImages = whiteboardData.images?.filter(img => img.groupId === group.id) || [];
+                    // 遞歸收集所有要移動的元素（包括子群組內的元素）
+                    const getAllElementsInGroup = (groupId: string): {notes: StickyNote[], images: ImageElement[]} => {
+                      const currentGroup = whiteboardData.groups?.find(g => g.id === groupId);
+                      if (!currentGroup) return {notes: [], images: []};
+                      
+                      let allNotes = getGroupNotes(groupId);
+                      let allImages = whiteboardData.images?.filter(img => img.groupId === groupId) || [];
+                      
+                      // 遞歸收集子群組的元素
+                      if (currentGroup.childGroupIds) {
+                        for (const childGroupId of currentGroup.childGroupIds) {
+                          const childElements = getAllElementsInGroup(childGroupId);
+                          allNotes = allNotes.concat(childElements.notes);
+                          allImages = allImages.concat(childElements.images);
+                        }
+                      }
+                      
+                      return {notes: allNotes, images: allImages};
+                    };
+                    
+                    const {notes: allNotes, images: allImages} = getAllElementsInGroup(group.id);
                     const positions: {[key: string]: {x: number, y: number}} = {};
                     
-                    groupNotes.forEach(note => {
+                    allNotes.forEach(note => {
                       positions[note.id] = { x: note.x, y: note.y };
                     });
-                    groupImages.forEach(img => {
+                    allImages.forEach(img => {
                       positions[img.id] = { x: img.x, y: img.y };
                     });
                     
@@ -3747,12 +4169,120 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                     setSelectedGroup(group.id);
                     setSelectedNote(null);
                     setSelectedImage(null);
-                    setSelectedNotes(group.noteIds);
-                    setSelectedImages(group.imageIds || []);
+                    setSelectedNotes([]);
+                    setSelectedImages([]);
                   }}
                 />
               );
-            })}
+            });
+            })()}
+
+            {/* 子群組渲染 - 遞歸渲染所有子群組 */}
+            {(() => {
+              const renderChildGroups = (parentGroupId: string): JSX.Element[] => {
+                const parentGroup = whiteboardData.groups?.find(g => g.id === parentGroupId);
+                
+                if (!parentGroup?.childGroupIds || parentGroup.childGroupIds.length === 0) return [];
+                
+                return parentGroup.childGroupIds.flatMap(childGroupId => {
+                  const childGroup = whiteboardData.groups?.find(g => g.id === childGroupId);
+                  if (!childGroup) return [];
+                  
+                  const bounds = getGroupBounds(childGroup.id);
+                  if (!bounds) return [];
+                  
+                  const isSelected = selectedGroup === childGroup.id || selectedGroups.includes(childGroup.id);
+                  const hasChildGroups = (childGroup.childGroupIds?.length || 0) > 0;
+                  
+                  return [
+                    <GroupComponent
+                      key={childGroup.id}
+                      group={childGroup}
+                      bounds={bounds}
+                      isSelected={isSelected}
+                      zoomLevel={zoomLevel}
+                      shouldAutoFocus={autoFocusGroupId === childGroup.id}
+                      onAutoFocusHandled={() => setAutoFocusGroupId(null)}
+                      onSelect={(isMultiSelect?: boolean) => {
+                        if (isMultiSelect) {
+                          if (selectedGroups.includes(childGroup.id)) {
+                            setSelectedGroups(prev => prev.filter(id => id !== childGroup.id));
+                          } else {
+                            setSelectedGroups(prev => [...prev, childGroup.id]);
+                          }
+                        } else {
+                          setSelectedGroup(childGroup.id);
+                          setSelectedGroups([]);
+                          setSelectedNote(null);
+                          setSelectedNotes([]);
+                          setSelectedImage(null);
+                          setSelectedImages([]);
+                          setSelectedEdge(null);
+                        }
+                      }}
+                      onUpdateName={(name) => updateGroupName(childGroup.id, name)}
+                      onUpdateColor={(color) => updateGroupColor(childGroup.id, color)}
+                      onUngroup={() => ungroupNotes(childGroup.id)}
+                      onDelete={() => deleteGroup(childGroup.id)}
+                      onCreateParentGroup={() => createParentGroup([childGroup.id])}
+                      isChildGroup={true}
+                      hasChildGroups={hasChildGroups}
+                      onStartDrag={(e) => {
+                        // 與父群組相同的拖曳邏輯
+                        const getAllElementsInGroup = (groupId: string): {notes: StickyNote[], images: ImageElement[]} => {
+                          const currentGroup = whiteboardData.groups?.find(g => g.id === groupId);
+                          if (!currentGroup) return {notes: [], images: []};
+                          
+                          let allNotes = getGroupNotes(groupId);
+                          let allImages = whiteboardData.images?.filter(img => img.groupId === groupId) || [];
+                          
+                          if (currentGroup.childGroupIds) {
+                            for (const childId of currentGroup.childGroupIds) {
+                              const childElements = getAllElementsInGroup(childId);
+                              allNotes = allNotes.concat(childElements.notes);
+                              allImages = allImages.concat(childElements.images);
+                            }
+                          }
+                          
+                          return {notes: allNotes, images: allImages};
+                        };
+                        
+                        const {notes: allNotes, images: allImages} = getAllElementsInGroup(childGroup.id);
+                        const positions: {[key: string]: {x: number, y: number}} = {};
+                        
+                        allNotes.forEach(note => {
+                          positions[note.id] = { x: note.x, y: note.y };
+                        });
+                        allImages.forEach(img => {
+                          positions[img.id] = { x: img.x, y: img.y };
+                        });
+                        
+                        setGroupDragState({
+                          isDragging: true,
+                          groupId: childGroup.id,
+                          startX: e.clientX,
+                          startY: e.clientY,
+                          initialPositions: positions
+                        });
+                        
+                        setSelectedGroup(childGroup.id);
+                        setSelectedNote(null);
+                        setSelectedImage(null);
+                        setSelectedNotes([]);
+                        setSelectedImages([]);
+                      }}
+                    />,
+                    // 遞歸渲染這個子群組的子群組
+                    ...renderChildGroups(childGroup.id)
+                  ];
+                });
+              };
+              
+              // 為所有頂層群組渲染子群組
+              return (whiteboardData.groups || [])
+                .filter(group => !group.parentGroupId)
+                .flatMap(group => renderChildGroups(group.id));
+            })()}
 
             {/* 拖曳選取框 */}
             {isSelecting && (
@@ -3940,6 +4470,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                 setHoveredNote(null);
                 setHoveredImage(null);
               }}
+              onQuickConnect={(direction) => handleImageQuickConnect(image.id, direction)}
               onCreateGroup={() => {
                 if (selectedImages.length >= 2 || (selectedImages.length + selectedNotes.length >= 2)) {
                   createGroup(selectedNotes, selectedImages);

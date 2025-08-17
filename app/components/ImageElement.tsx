@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ImageElement as ImageElementType } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -20,6 +21,7 @@ interface ImageElementProps {
   onUpdateSize: (width: number, height: number) => void;
   onDelete: () => void;
   onStartConnection?: () => void; // 開始連接
+  onQuickConnect?: (direction: 'top' | 'right' | 'bottom' | 'left') => void; // 快速連接
   onCreateGroup?: () => void; // 建立群組
   onUngroupImages?: () => void; // 取消群組
   onBatchMove?: (deltaX: number, deltaY: number) => void; // 批量移動
@@ -47,6 +49,7 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
   onUpdateSize,
   onDelete,
   onStartConnection,
+  onQuickConnect,
   onCreateGroup,
   onUngroupImages,
   onBatchMove,
@@ -73,18 +76,8 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
     initialImageY: number;
   } | null>(null);
   
-  // Log when component mounts or image changes
+  // Check for invalid placeholder URLs
   useEffect(() => {
-    console.log('ImageElement rendered:', {
-      id: image.id,
-      filename: image.filename,
-      urlType: image.url.startsWith('data:') ? 'base64' : 'url',
-      urlLength: image.url.length,
-      position: { x: image.x, y: image.y },
-      size: { width: image.width, height: image.height }
-    });
-    
-    // Check if URL is invalid placeholder
     if (image.url === '[LOCAL_IMAGE]') {
       console.error('Invalid image URL: [LOCAL_IMAGE] placeholder detected');
       setImageError(true);
@@ -97,6 +90,11 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
     e.stopPropagation();
     setShowContextMenu(true);
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
+    
+    // 如果不是多選狀態或目前圖片未被選取，才執行選取
+    if (!isMultiSelected || !isSelected) {
+      onSelect();
+    }
   };
 
   useEffect(() => {
@@ -371,9 +369,34 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
                 className="absolute -top-10 left-1/2 transform -translate-x-1/2 w-12 h-12 cursor-pointer flex items-center justify-center group"
                 onMouseDown={(e) => {
                   e.stopPropagation();
-                  onStartConnection?.();
+                  const startX = e.clientX;
+                  const startY = e.clientY;
+                  let isDragging = false;
+                  
+                  const handleMouseMove = (moveEvent: MouseEvent) => {
+                    const dx = moveEvent.clientX - startX;
+                    const dy = moveEvent.clientY - startY;
+                    if (Math.hypot(dx, dy) > 5) {
+                      isDragging = true;
+                      onStartConnection?.();
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                    }
+                  };
+                  
+                  const handleMouseUp = () => {
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                    
+                    if (!isDragging && onQuickConnect) {
+                      onQuickConnect('top');
+                    }
+                  };
+                  
+                  document.addEventListener('mousemove', handleMouseMove);
+                  document.addEventListener('mouseup', handleMouseUp);
                 }}
-                title="開始連接"
+                title="點擊快速連接 / 拖曳自由連接"
               >
                 <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-md group-hover:bg-green-600 group-hover:scale-150 transition-all duration-200" />
               </div>
@@ -383,9 +406,34 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
                 className="absolute -right-10 top-1/2 transform -translate-y-1/2 w-12 h-12 cursor-pointer flex items-center justify-center group"
                 onMouseDown={(e) => {
                   e.stopPropagation();
-                  onStartConnection?.();
+                  const startX = e.clientX;
+                  const startY = e.clientY;
+                  let isDragging = false;
+                  
+                  const handleMouseMove = (moveEvent: MouseEvent) => {
+                    const dx = moveEvent.clientX - startX;
+                    const dy = moveEvent.clientY - startY;
+                    if (Math.hypot(dx, dy) > 5) {
+                      isDragging = true;
+                      onStartConnection?.();
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                    }
+                  };
+                  
+                  const handleMouseUp = () => {
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                    
+                    if (!isDragging && onQuickConnect) {
+                      onQuickConnect('right');
+                    }
+                  };
+                  
+                  document.addEventListener('mousemove', handleMouseMove);
+                  document.addEventListener('mouseup', handleMouseUp);
                 }}
-                title="開始連接"
+                title="點擊快速連接 / 拖曳自由連接"
               >
                 <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-md group-hover:bg-green-600 group-hover:scale-150 transition-all duration-200" />
               </div>
@@ -395,9 +443,34 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
                 className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 w-12 h-12 cursor-pointer flex items-center justify-center group"
                 onMouseDown={(e) => {
                   e.stopPropagation();
-                  onStartConnection?.();
+                  const startX = e.clientX;
+                  const startY = e.clientY;
+                  let isDragging = false;
+                  
+                  const handleMouseMove = (moveEvent: MouseEvent) => {
+                    const dx = moveEvent.clientX - startX;
+                    const dy = moveEvent.clientY - startY;
+                    if (Math.hypot(dx, dy) > 5) {
+                      isDragging = true;
+                      onStartConnection?.();
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                    }
+                  };
+                  
+                  const handleMouseUp = () => {
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                    
+                    if (!isDragging && onQuickConnect) {
+                      onQuickConnect('bottom');
+                    }
+                  };
+                  
+                  document.addEventListener('mousemove', handleMouseMove);
+                  document.addEventListener('mouseup', handleMouseUp);
                 }}
-                title="開始連接"
+                title="點擊快速連接 / 拖曳自由連接"
               >
                 <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-md group-hover:bg-green-600 group-hover:scale-150 transition-all duration-200" />
               </div>
@@ -407,9 +480,34 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
                 className="absolute -left-10 top-1/2 transform -translate-y-1/2 w-12 h-12 cursor-pointer flex items-center justify-center group"
                 onMouseDown={(e) => {
                   e.stopPropagation();
-                  onStartConnection?.();
+                  const startX = e.clientX;
+                  const startY = e.clientY;
+                  let isDragging = false;
+                  
+                  const handleMouseMove = (moveEvent: MouseEvent) => {
+                    const dx = moveEvent.clientX - startX;
+                    const dy = moveEvent.clientY - startY;
+                    if (Math.hypot(dx, dy) > 5) {
+                      isDragging = true;
+                      onStartConnection?.();
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                    }
+                  };
+                  
+                  const handleMouseUp = () => {
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                    
+                    if (!isDragging && onQuickConnect) {
+                      onQuickConnect('left');
+                    }
+                  };
+                  
+                  document.addEventListener('mousemove', handleMouseMove);
+                  document.addEventListener('mouseup', handleMouseUp);
                 }}
-                title="開始連接"
+                title="點擊快速連接 / 拖曳自由連接"
               >
                 <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-md group-hover:bg-green-600 group-hover:scale-150 transition-all duration-200" />
               </div>
@@ -444,64 +542,81 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
 
       </div>
 
-      {/* Context Menu */}
-      {showContextMenu && (
-        <div
-          className={`fixed z-50 py-2 rounded-lg shadow-lg min-w-48 ${
-            isDarkMode 
-              ? 'bg-dark-bg-secondary border border-gray-700' 
-              : 'bg-white border border-gray-200'
-          }`}
-          style={{
-            left: `${contextMenuPosition.x}px`,
-            top: `${contextMenuPosition.y}px`,
-          }}
-        >
-          <button
-            onClick={() => {
-              // Copy image URL to clipboard
-              navigator.clipboard.writeText(image.url);
-              setShowContextMenu(false);
-            }}
-            className={`w-full px-4 py-2 text-left text-sm ${
+      {/* Context Menu - 使用 Portal 渲染到 body */}
+      {showContextMenu && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-50"
+            onClick={() => setShowContextMenu(false)}
+          />
+          <div
+            className={`context-menu fixed z-50 rounded-xl shadow-2xl border py-2 min-w-40 backdrop-blur-sm ${
               isDarkMode 
-                ? 'hover:bg-dark-bg-tertiary text-gray-300' 
-                : 'hover:bg-gray-50 text-gray-700'
+                ? 'bg-dark-bg-secondary border-gray-700' 
+                : 'bg-white border-gray-200'
             }`}
-          >
-            複製圖片連結
-          </button>
-          <button
-            onClick={() => {
-              // Open image in new tab
-              window.open(image.url, '_blank');
-              setShowContextMenu(false);
+            style={{
+              left: Math.min(contextMenuPosition.x + 10, window.innerWidth - 200),
+              top: Math.min(contextMenuPosition.y + 10, window.innerHeight - 200),
             }}
-            className={`w-full px-4 py-2 text-left text-sm ${
-              isDarkMode 
-                ? 'hover:bg-dark-bg-tertiary text-gray-300' 
-                : 'hover:bg-gray-50 text-gray-700'
-            }`}
           >
-            在新分頁開啟
-          </button>
+            {/* 標題區域 */}
+            <div className={`px-3 py-1 text-xs font-medium border-b mb-1 ${
+              isDarkMode 
+                ? 'text-gray-400 border-gray-700' 
+                : 'text-gray-500 border-gray-100'
+            }`}>
+              {isMultiSelected ? '批量操作' : '圖片操作'}
+            </div>
+            
+            <button
+              onClick={() => {
+                // Copy image URL to clipboard
+                navigator.clipboard.writeText(image.url);
+                setShowContextMenu(false);
+              }}
+              className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
+                isDarkMode 
+                  ? 'text-gray-300 hover:bg-gray-700/50' 
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span className="text-base">📋</span>
+              <span>複製圖片連結</span>
+            </button>
+            <button
+              onClick={() => {
+                // Open image in new tab
+                window.open(image.url, '_blank');
+                setShowContextMenu(false);
+              }}
+              className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
+                isDarkMode 
+                  ? 'text-gray-300 hover:bg-gray-700/50' 
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span className="text-base">🔗</span>
+              <span>在新分頁開啟</span>
+            </button>
           
           {/* 群組選項 */}
           {isMultiSelected && onCreateGroup && (
             <>
-              <div className={`h-px ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`} />
+              <div className={`h-px my-1 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`} />
               <button
                 onClick={() => {
                   onCreateGroup();
                   setShowContextMenu(false);
                 }}
-                className={`w-full px-4 py-2 text-left text-sm ${
+                className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
                   isDarkMode 
-                    ? 'hover:bg-indigo-900/30 text-indigo-400' 
-                    : 'hover:bg-indigo-50 text-indigo-600'
+                    ? 'text-gray-300 hover:bg-indigo-900/30 hover:text-indigo-400' 
+                    : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
                 }`}
               >
-                建立群組
+                <span className="text-base">📁</span>
+                <span>建立群組</span>
               </button>
             </>
           )}
@@ -509,38 +624,42 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
           {/* 如果圖片屬於群組，顯示取消群組選項 */}
           {image.groupId && onUngroupImages && (
             <>
-              {!isMultiSelected && <div className={`h-px ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`} />}
+              {!isMultiSelected && <div className={`h-px my-1 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`} />}
               <button
                 onClick={() => {
                   onUngroupImages();
                   setShowContextMenu(false);
                 }}
-                className={`w-full px-4 py-2 text-left text-sm ${
+                className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
                   isDarkMode 
-                    ? 'hover:bg-indigo-900/30 text-indigo-400' 
-                    : 'hover:bg-indigo-50 text-indigo-600'
+                    ? 'text-gray-300 hover:bg-indigo-900/30 hover:text-indigo-400' 
+                    : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
                 }`}
               >
-                取消群組
+                <span className="text-base">📤</span>
+                <span>取消群組</span>
               </button>
             </>
           )}
           
-          <div className={`h-px ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`} />
+          <div className={`h-px my-1 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`} />
           <button
             onClick={() => {
               onDelete();
               setShowContextMenu(false);
             }}
-            className={`w-full px-4 py-2 text-left text-sm ${
+            className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
               isDarkMode 
-                ? 'hover:bg-red-900/30 text-red-400' 
-                : 'hover:bg-red-50 text-red-600'
+                ? 'text-gray-300 hover:bg-red-900/30 hover:text-red-400' 
+                : 'text-gray-700 hover:bg-red-50 hover:text-red-600'
             }`}
           >
-            刪除圖片
+            <span className="text-base">🗑</span>
+            <span>刪除圖片</span>
           </button>
         </div>
+        </>,
+        document.body
       )}
     </>
   );

@@ -10,6 +10,8 @@
 5. [群組功能實作](#群組功能實作)
 6. [批量操作實作](#批量操作實作)
 7. [視覺回饋實作](#視覺回饋實作)
+8. [右鍵選單實作](#右鍵選單實作)
+9. [測試檢查清單](#測試檢查清單)
 
 ## 核心架構
 
@@ -72,6 +74,7 @@ interface ImageElementProps {
   onUpdateSize: (width: number, height: number) => void;
   onDelete: () => void;
   onStartConnection?: () => void;
+  onQuickConnect?: (direction: 'top' | 'right' | 'bottom' | 'left') => void;
   onCreateGroup?: () => void;
   onUngroupImages?: () => void;
   onBatchMove?: (deltaX: number, deltaY: number) => void;
@@ -221,7 +224,133 @@ const toX = toElement.x + toElement.width / 2;
 const toY = toElement.y + toElement.height / 2;
 ```
 
-### 3. 連接完成邏輯
+### 3. 快速連接功能實作
+
+圖片連接點支援兩種模式：
+- **拖曳模式**：觸發自由連接，可以連接到任何元素
+- **點擊模式**：快速在指定方向創建新便利貼並自動連接
+
+#### 連接點事件處理
+
+```typescript
+onMouseDown={(e) => {
+  e.stopPropagation();
+  const startX = e.clientX;
+  const startY = e.clientY;
+  let isDragging = false;
+  
+  const handleMouseMove = (moveEvent: MouseEvent) => {
+    const dx = moveEvent.clientX - startX;
+    const dy = moveEvent.clientY - startY;
+    if (Math.hypot(dx, dy) > 5) {
+      isDragging = true;
+      onStartConnection?.();
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    }
+  };
+  
+  const handleMouseUp = () => {
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+    
+    if (!isDragging && onQuickConnect) {
+      onQuickConnect('top'); // 根據連接點方向
+    }
+  };
+  
+  document.addEventListener('mousemove', handleMouseMove);
+  document.addEventListener('mouseup', handleMouseUp);
+}}
+```
+
+#### 快速連接處理函數
+
+在 Whiteboard 組件中實作 `handleImageQuickConnect`：
+
+```typescript
+const handleImageQuickConnect = useCallback((imageId: string, direction: 'top' | 'right' | 'bottom' | 'left') => {
+  const fromImage = whiteboardData.images?.find(img => img.id === imageId);
+  if (!fromImage) return;
+  
+  // 計算起始圖片的中心點
+  const fromX = fromImage.x + fromImage.width / 2;
+  const fromY = fromImage.y + fromImage.height / 2;
+  
+  // 根據方向計算角度
+  let angle = 0;
+  switch (direction) {
+    case 'top': angle = -Math.PI / 2; break;
+    case 'right': angle = 0; break;
+    case 'bottom': angle = Math.PI / 2; break;
+    case 'left': angle = Math.PI; break;
+  }
+  
+  // 新便利貼參數
+  const newNoteWidth = 200;
+  const newNoteHeight = 200;
+  const gap = 15;
+  const defaultDistance = 180;
+  
+  // 計算邊緣距離的函數
+  const getDistanceToEdge = (width: number, height: number, angleToEdge: number) => {
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+    
+    if (Math.abs(Math.cos(angleToEdge)) > Math.abs(Math.sin(angleToEdge))) {
+      return halfWidth / Math.abs(Math.cos(angleToEdge));
+    } else {
+      return halfHeight / Math.abs(Math.sin(angleToEdge));
+    }
+  };
+  
+  // 計算總距離和新便利貼位置
+  const fromEdgeDistance = getDistanceToEdge(fromImage.width, fromImage.height, angle);
+  const toEdgeDistance = getDistanceToEdge(newNoteWidth, newNoteHeight, angle);
+  const totalDistance = fromEdgeDistance + gap + defaultDistance + gap + toEdgeDistance;
+  
+  const newNoteCenterX = fromX + Math.cos(angle) * totalDistance;
+  const newNoteCenterY = fromY + Math.sin(angle) * totalDistance;
+  const newNoteX = newNoteCenterX - newNoteWidth / 2;
+  const newNoteY = newNoteCenterY - newNoteHeight / 2;
+  
+  // 創建新便利貼
+  const newNoteId = `note_${Date.now()}`;
+  const newNote: StickyNote = {
+    id: newNoteId,
+    x: newNoteX,
+    y: newNoteY,
+    width: newNoteWidth,
+    height: newNoteHeight,
+    content: '',
+    color: '#FEF3C7'
+  };
+  
+  // 更新數據並建立連接
+  saveToHistory(whiteboardData);
+  updateWhiteboardData(prev => ({
+    ...prev,
+    notes: [...prev.notes, newNote]
+  }));
+  addEdge(imageId, newNoteId);
+  
+  // 自動選中新便利貼
+  setSelectedNote(newNoteId);
+  setSelectedImage(null);
+  setAutoEditNoteId(newNoteId);
+}, [whiteboardData, saveToHistory, updateWhiteboardData, addEdge]);
+```
+
+#### 在圖片渲染中綁定快速連接
+
+```typescript
+<ImageElementComponent
+  // ... 其他 props
+  onQuickConnect={(direction) => handleImageQuickConnect(image.id, direction)}
+/>
+```
+
+### 4. 連接完成邏輯
 
 在 `handleCanvasMouseUp` 中處理連接到圖片：
 ```typescript
@@ -489,6 +618,82 @@ const getMultiSelectionBounds = useCallback(() => {
 })()}
 ```
 
+## 右鍵選單實作
+
+### 1. 使用 Portal 渲染選單
+
+為了避免位置問題，右鍵選單使用 React Portal 渲染到 document.body：
+
+```typescript
+{showContextMenu && createPortal(
+  <>
+    <div
+      className="fixed inset-0 z-50"
+      onClick={() => setShowContextMenu(false)}
+    />
+    <div
+      className={`context-menu fixed z-50 rounded-xl shadow-2xl border py-2 min-w-40 backdrop-blur-sm ${
+        isDarkMode 
+          ? 'bg-dark-bg-secondary border-gray-700' 
+          : 'bg-white border-gray-200'
+      }`}
+      style={{
+        left: Math.min(contextMenuPosition.x + 10, window.innerWidth - 200),
+        top: Math.min(contextMenuPosition.y + 10, window.innerHeight - 200),
+      }}
+    >
+      {/* 選單內容 */}
+    </div>
+  </>,
+  document.body
+)}
+```
+
+### 2. 選單位置計算
+
+確保選單不會超出視窗邊界：
+
+```typescript
+const handleContextMenu = (e: React.MouseEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  setShowContextMenu(true);
+  setContextMenuPosition({ x: e.clientX, y: e.clientY });
+  
+  // 如果不是多選狀態或目前圖片未被選取，才執行選取
+  if (!isMultiSelected || !isSelected) {
+    onSelect();
+  }
+};
+```
+
+### 3. 選單樣式統一
+
+確保與便利貼選單樣式一致：
+
+```typescript
+// 標題區域
+<div className={`px-3 py-1 text-xs font-medium border-b mb-1 ${
+  isDarkMode 
+    ? 'text-gray-400 border-gray-700' 
+    : 'text-gray-500 border-gray-100'
+}`}>
+  {isMultiSelected ? '批量操作' : '圖片操作'}
+</div>
+
+// 選單項目
+<button
+  className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
+    isDarkMode 
+      ? 'text-gray-300 hover:bg-gray-700/50' 
+      : 'text-gray-700 hover:bg-gray-50'
+  }`}
+>
+  <span className="text-base">📋</span>
+  <span>複製圖片連結</span>
+</button>
+```
+
 ## 重要注意事項
 
 ### 1. 類名標識
@@ -515,18 +720,82 @@ className={`image-element absolute select-none ...`}
 
 ## 測試檢查清單
 
+### 基本選取功能
 - [ ] 單選圖片時，便利貼選取被清除
 - [ ] 單選便利貼時，圖片選取被清除
 - [ ] 點擊畫布空白處，所有選取被清除
 - [ ] 框選可以同時選中便利貼和圖片
 - [ ] Ctrl+A 可以選中所有元素
+
+### 拖曳和移動功能
 - [ ] 多選拖曳時所有選中元素一起移動
-- [ ] 圖片可以與便利貼建立連接
-- [ ] 圖片可以與圖片建立連接
+- [ ] 單個圖片拖曳功能正常
+- [ ] 圖片調整大小功能正常
+- [ ] 多選時顯示邊界框
+
+### 連接功能
+- [ ] 圖片可以與便利貼建立連接（拖曳模式）
+- [ ] 圖片可以與圖片建立連接（拖曳模式）
+- [ ] 點擊圖片連接點可以快速創建便利貼
+- [ ] 快速連接的便利貼位置正確（上、下、左、右四個方向）
+- [ ] 快速連接後自動建立連線
+- [ ] 快速連接後自動選中新便利貼並進入編輯模式
+- [ ] 拖曳連接點超過5px後進入自由連接模式
+
+### 群組功能
 - [ ] 圖片可以加入群組
 - [ ] 群組拖曳時包含的圖片一起移動
-- [ ] 多選時顯示邊界框
+- [ ] 圖片可以與便利貼混合群組
+- [ ] 取消群組功能正常
+
+### 視覺回饋
 - [ ] 選取狀態有正確的視覺回饋
+- [ ] 連接模式時圖片有正確的視覺提示
+- [ ] 懸停連接目標時有正確的視覺回饋
+- [ ] 右鍵選單位置正確且功能完整
+- [ ] 右鍵時自動選中圖片
+
+### 其他功能
+- [ ] 圖片永久陰影效果
+- [ ] 不顯示檔案名稱
+- [ ] 支援Firebase Storage上傳（已登入用戶）
+- [ ] 支援base64本地存儲（訪客模式）
+
+## 最新更新記錄
+
+### 2024 年更新：圖片快速連接功能
+
+#### 問題描述
+圖片的連接點原本只支援拖曳連接模式，缺少便利貼的快速連接功能（點擊連接點直接創建新便利貼）。
+
+#### 解決方案
+1. **更新 ImageElement Props 接口**
+   - 添加 `onQuickConnect?: (direction: 'top' | 'right' | 'bottom' | 'left') => void`
+
+2. **實現連接點雙模式支援**
+   - 拖曳超過 5px：觸發 `onStartConnection()` 進入自由連接模式
+   - 點擊不拖曳：觸發 `onQuickConnect(direction)` 快速創建便利貼
+
+3. **新增 handleImageQuickConnect 函數**
+   - 計算圖片中心點和目標方向
+   - 使用與便利貼相同的距離計算邏輯
+   - 創建 200x200 的黃色便利貼
+   - 自動建立連接並進入編輯模式
+
+4. **更新所有四個連接點的事件處理**
+   - 統一使用滑鼠事件監聽模式
+   - 支援方向感知的快速連接
+
+#### 修改的文件
+- `app/components/ImageElement.tsx`: 更新連接點邏輯
+- `app/components/Whiteboard.tsx`: 新增快速連接處理函數
+- `docs/IMAGE_FEATURE_IMPLEMENTATION.md`: 更新文件
+
+#### 測試要點
+- ✅ 點擊連接點創建便利貼位置正確
+- ✅ 拖曳連接點進入自由連接模式
+- ✅ 四個方向（上下左右）都正常工作
+- ✅ 自動選中新便利貼並進入編輯模式
 
 ## 相關文件
 - [白板架構文件](./WHITEBOARD_ARCHITECTURE.md)

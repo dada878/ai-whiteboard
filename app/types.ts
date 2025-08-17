@@ -27,6 +27,8 @@ export interface Group {
   createdAt: Date;
   noteIds: string[]; // 群組內便利貼的ID列表
   imageIds?: string[]; // 群組內圖片的ID列表
+  parentGroupId?: string; // 父群組ID，用於支援嵌套群組
+  childGroupIds?: string[]; // 子群組ID列表
 }
 
 export interface ImageElement {

@@ -66,7 +66,6 @@ export class AuthService {
   static async resetPassword(email: string): Promise<void> {
     // 實現密碼重設邏輯
     // 這通常涉及發送重設密碼的郵件
-    console.log(`Password reset would be sent to: ${email}`);
     throw new Error('密碼重設功能尚未實現');
   }
 

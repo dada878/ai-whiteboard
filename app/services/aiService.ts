@@ -20,8 +20,6 @@ export class AIService {
     }
 
     try {
-      console.log('\n=== 🎯 Simple Brainstorm Debug ===');
-      console.log('📍 Target:', content);
       
       const systemPrompt = `你是專業的創意發想專家，擅長產生高品質、實用的想法。
 
@@ -47,8 +45,6 @@ export class AIService {
 
 直接輸出（不要編號）：`;
 
-      console.log('📝 System Prompt:', systemPrompt);
-      console.log('📝 User Prompt:', userPrompt);
       
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -75,7 +71,6 @@ export class AIService {
       });
 
       const data = await response.json();
-      console.log('✅ Response:', data.choices?.[0]?.message?.content);
       const result = data.choices[0].message.content;
       
       // 解析回應並過濾
@@ -95,8 +90,6 @@ export class AIService {
         .filter((line: string) => line.length > 0 && line.length <= 15)
         .slice(0, 5);
       
-      console.log('📋 Parsed Results:', lines);
-      console.log('=== 🏁 Simple Brainstorm End ===\n');
       
       return lines;
     } catch (error) {
@@ -124,18 +117,11 @@ export class AIService {
 
     try {
       onProgress?.('💡 分析脈絡...', 30);
-      console.log('=== 🚀 Smart Brainstorming Debug Start ===');
-      console.log('📍 Target Node:', targetNote.content);
-      console.log('📍 Target Node ID:', targetNote.id);
       
       // 智能分析節點類型和位置
       const childCount = outgoingConnections.length;
       const parentCount = incomingConnections.length;
       
-      console.log('📊 Node Statistics:');
-      console.log('  - Parent Count:', parentCount);
-      console.log('  - Child Count:', childCount);
-      console.log('  - All Related Notes:', allRelatedNotes.length);
       
       // 建立結構化的上下文
       const contextInfo = '';
@@ -146,9 +132,6 @@ export class AIService {
       const childNodes = outgoingConnections.slice(0, 3).map(c => c.note.content);
       const siblingNodes: string[] = [];
       
-      console.log('🔗 Connected Nodes:');
-      console.log('  - Parent Nodes:', parentNodes);
-      console.log('  - Child Nodes:', childNodes);
       
       // 找出真正的兄弟節點
       if (parentCount > 0 && incomingConnections[0].note) {
@@ -166,7 +149,6 @@ export class AIService {
         siblingNodes.push(...siblings);
       }
       
-      console.log('  - Sibling Nodes:', siblingNodes);
       
       // 建立更完整的層級結構
       const buildFullTree = (): string => {
@@ -261,8 +243,6 @@ export class AIService {
       };
       
       const treeStructure = buildFullTree();
-      console.log('\n📊 Tree Structure:');
-      console.log(treeStructure);
       
       // 不再用關鍵詞判斷，而是分析結構模式
       const analyzeNodePattern = () => {
@@ -294,9 +274,6 @@ export class AIService {
       
       const { childrenPattern, siblingPattern } = analyzeNodePattern();
       
-      console.log('\n🎯 Pattern Analysis:');
-      console.log('  - Children Pattern:', childrenPattern);
-      console.log('  - Sibling Pattern:', siblingPattern);
       
       onProgress?.('✨ 生成創意中...', 70);
       
@@ -338,12 +315,6 @@ ${treeStructure}
 
 請分析後直接輸出概念：`;
       
-      console.log('\n📝 === FINAL PROMPT ===');
-      console.log('🤖 System Prompt:');
-      console.log(systemPrompt);
-      console.log('\n👤 User Prompt:');
-      console.log(userPrompt);
-      console.log('📝 === END PROMPT ===\n');
       
       const requestBody = {
         model: 'gpt-3.5-turbo',
@@ -363,12 +334,6 @@ ${treeStructure}
         frequency_penalty: 0.3
       };
       
-      console.log('🔧 API Parameters:');
-      console.log('  - Model:', requestBody.model);
-      console.log('  - Max Tokens:', requestBody.max_tokens);
-      console.log('  - Temperature:', requestBody.temperature);
-      console.log('  - Presence Penalty:', requestBody.presence_penalty);
-      console.log('  - Frequency Penalty:', requestBody.frequency_penalty);
       
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -381,8 +346,6 @@ ${treeStructure}
 
       const data = await response.json();
       
-      console.log('\n🎉 === API RESPONSE ===');
-      console.log('Status:', response.status);
       
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
         console.error('❌ API failed:', data);
@@ -390,9 +353,6 @@ ${treeStructure}
       }
       
       const result = data.choices[0].message.content;
-      console.log('✅ Raw Generated Content:');
-      console.log(result);
-      console.log('🎉 === END RESPONSE ===\n');
       
       // 解析回應 - 更智能的解析
       const allLines = result.split('\n').map((line: string) => line.trim());
@@ -461,9 +421,6 @@ ${treeStructure}
       
       const lines = parsedLines;
       
-      console.log('📋 Parsed Results:', lines);
-      console.log('📋 Total Valid Ideas:', lines.length);
-      console.log('=== 🏁 Smart Brainstorming Debug End ===\n');
       
       onProgress?.('🎉 完成！', 100);
       
@@ -515,9 +472,6 @@ ${treeStructure}
     }
 
     try {
-      console.log('=== Starting AI Node Convergence Chain of Thought ===');
-      console.log('Target Node:', targetNote.content);
-      console.log('Child Nodes:', childNotes.map(n => n.content));
 
       // Step 1: 分析目標節點的上下文和目的
       const step1Response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -559,7 +513,6 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
         throw new Error('Failed to analyze node context');
       }
       const contextAnalysis = step1Data.choices[0].message.content;
-      console.log('Context Analysis:', contextAnalysis);
 
       // Step 2: 逐一評估每個子節點的重要性
       const step2Response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -603,7 +556,6 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
         throw new Error('Failed to evaluate node importance');
       }
       const evaluationAnalysis = step2Data.choices[0].message.content;
-      console.log('Evaluation Analysis:', evaluationAnalysis);
 
       // Step 3: 制定收斂策略並決定保留/移除
       const step3Response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -670,7 +622,6 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
       }
 
       const convergenceResult = step3Data.choices[0].message.content;
-      console.log('Convergence Result:', convergenceResult);
 
       try {
         const parsedResult = JSON.parse(convergenceResult);
@@ -695,7 +646,6 @@ ${childNotes.map((note, i) => `${i + 1}. ${note.content}`).join('\n')}
           };
         });
 
-        console.log('=== End of AI Node Convergence ===');
 
         return {
           keepNodes,
@@ -1265,12 +1215,6 @@ ${contextInfo}
 ${userPrompt}`;
       
       // 詳細日誌
-      console.log('=== Ask AI Prompt ===');
-      console.log('System Prompt:');
-      console.log(systemPrompt);
-      console.log('\nUser Message:');
-      console.log(userMessage);
-      console.log('=== End of Ask AI Prompt ===\n');
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
