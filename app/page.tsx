@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import Whiteboard from './components/Whiteboard';
 import PlusWelcomeDialog from './components/PlusWelcomeDialog';
 import Header from './components/Header';
-import VersionDisplay from './components/VersionDisplay';
 import { useAuth } from './contexts/AuthContext';
 
 export default function Home() {
@@ -67,7 +66,6 @@ export default function Home() {
         isOpen={showWelcomeDialog}
         onClose={() => setShowWelcomeDialog(false)}
       />
-      <VersionDisplay />
     </div>
   );
 }

@@ -1,10 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
 import { useTheme } from '../contexts/ThemeContext';
 import EditNameDialog from './EditNameDialog';
+
+interface VersionInfo {
+  commit: string;
+  buildDate: string;
+}
 
 interface AuthButtonProps {
   onShowPlusWelcome?: () => void;
@@ -15,6 +20,30 @@ export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) 
   const { isDarkMode } = useTheme();
   const [showMenu, setShowMenu] = useState(false);
   const [showEditName, setShowEditName] = useState(false);
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
+
+  // 載入版本信息
+  useEffect(() => {
+    fetch('/version.json')
+      .then(res => res.json())
+      .then((data: VersionInfo) => setVersionInfo(data))
+      .catch(err => console.log('Version info not available:', err));
+  }, []);
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    try {
+      return new Date(dateString).toLocaleDateString('zh-TW', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return dateString;
+    }
+  };
 
   if (loading) {
     return (
@@ -159,6 +188,32 @@ export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) 
 
             
           </div>
+          
+          {/* 版本信息 */}
+          {versionInfo && (
+            <>
+              <div className={`border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`} />
+              <div className="py-1">
+                <div className={`px-4 py-2 text-xs ${
+                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                }`}>
+                  <div className="font-medium mb-1">版本信息</div>
+                  <div className="space-y-1">
+                    <div>
+                      <span className="opacity-70">Commit: </span>
+                      <span className="font-mono text-blue-500 dark:text-blue-400">
+                        {versionInfo.commit}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="opacity-70">建置: </span>
+                      <span>{formatDate(versionInfo.buildDate)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
           
           <div className={`border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`} />
           

@@ -40,7 +40,7 @@ export const getNoteByIdTool: ChatCompletionTool = {
   type: 'function',
   function: {
     name: 'get_note_by_id',
-    description: '根據ID獲取特定便利貼的詳細資訊，包含其內容、位置、顏色、連接關係（哪些便利貼連到它、它連到哪些便利貼）以及所屬群組。',
+    description: '🔗 重要的圖探索工具：根據ID獲取特定便利貼的詳細資訊，包含其內容、位置、顏色、連接關係（哪些便利貼連到它、它連到哪些便利貼）以及所屬群組。特別適合用於探索相鄰節點 - 當找到相關便利貼時，可以透過連接關係探索附近的其他便利貼來獲得更完整的脈絡。',
     parameters: {
       type: 'object',
       properties: {

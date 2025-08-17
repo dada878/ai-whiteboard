@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Project } from '../types';
+import { Project, WhiteboardData } from '../types';
 import { SyncStatus } from '../services/syncService';
 import { ProjectService } from '../services/projectService';
 import EditProjectDialog from './EditProjectDialog';
+import { AIChatPanelStream } from './AIChat/AIChatPanelStream';
+import { Bot, FolderOpen } from 'lucide-react';
 
 interface SidePanelProps {
   currentProject?: Project | null;
@@ -16,6 +18,7 @@ interface SidePanelProps {
   onProjectDelete?: (projectId: string) => void;
   cloudSyncEnabled?: boolean;
   onToggleCloudSync?: (enabled: boolean) => void;
+  whiteboardData?: WhiteboardData;
 }
 
 const SidePanel: React.FC<SidePanelProps> = ({ 
@@ -24,7 +27,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onProjectSelect,
   onProjectCreate,
   onProjectDelete,
-  cloudSyncEnabled = false
+  cloudSyncEnabled = false,
+  whiteboardData
 }) => {
   const { isDarkMode } = useTheme();
   const { user } = useAuth();
@@ -35,11 +39,159 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const [newProjectDescription, setNewProjectDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [activeTab, setActiveTab] = useState<'projects' | 'ai'>('projects');
+  
+  // AI 快速問題的全局狀態
+  const [quickQuestions, setQuickQuestions] = useState<string[]>([
+    '白板上有哪些內容？',
+    '有哪些群組？',
+    '找出所有待辦事項',
+    '分析白板結構'
+  ]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+  const generateQuestionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // 側邊欄寬度調整
+  const [sidebarWidth, setSidebarWidth] = useState(320); // 預設寬度
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeStartX, setResizeStartX] = useState(0);
+  const [resizeStartWidth, setResizeStartWidth] = useState(0);
+
+  // 生成動態快速問題（在背景載入）
+  const generateQuickQuestions = async () => {
+    if (isLoadingQuestions || !whiteboardData) return;
+    
+    setIsLoadingQuestions(true);
+    try {
+      const response = await fetch('/api/ai-agent/generate-questions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ whiteboardData }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.questions && Array.isArray(data.questions)) {
+          setQuickQuestions(data.questions);
+        }
+      }
+    } catch (error) {
+      console.error('Error generating questions:', error);
+      // 保持預設問題
+    } finally {
+      setIsLoadingQuestions(false);
+    }
+  };
+
+  // 防抖版本的問題生成
+  const debouncedGenerateQuestions = () => {
+    // 清除之前的 timeout
+    if (generateQuestionTimeoutRef.current) {
+      clearTimeout(generateQuestionTimeoutRef.current);
+    }
+    
+    // 設置新的 timeout（10秒防抖）
+    generateQuestionTimeoutRef.current = setTimeout(() => {
+      generateQuickQuestions();
+    }, 10000);
+  };
 
   // 載入專案列表
   useEffect(() => {
     loadProjects();
   }, []);
+
+  // 從 localStorage 載入儲存的寬度
+  useEffect(() => {
+    const savedWidth = localStorage.getItem('sidebarWidth');
+    if (savedWidth) {
+      setSidebarWidth(Math.max(280, Math.min(600, parseInt(savedWidth, 10))));
+    }
+  }, []);
+
+  // 儲存寬度到 localStorage
+  useEffect(() => {
+    localStorage.setItem('sidebarWidth', sidebarWidth.toString());
+  }, [sidebarWidth]);
+
+  // 背景自動生成問題（白板數據變化時）
+  useEffect(() => {
+    if (!whiteboardData) return;
+    
+    // 首次載入時立即生成問題
+    if (whiteboardData.notes?.length === 0 && whiteboardData.groups?.length === 0) {
+      generateQuickQuestions();
+      return;
+    }
+    
+    // 其他情況使用防抖
+    debouncedGenerateQuestions();
+    
+    // 清理函數
+    return () => {
+      if (generateQuestionTimeoutRef.current) {
+        clearTimeout(generateQuestionTimeoutRef.current);
+      }
+    };
+  }, [
+    whiteboardData?.notes?.length,
+    whiteboardData?.groups?.length, 
+    whiteboardData?.edges?.length,
+    // 只監聽便利貼內容的變化，忽略位置等頻繁變化的屬性
+    whiteboardData?.notes?.map(note => note.content).join('|')
+  ]);
+
+  // 組件卸載時清理 timeout
+  useEffect(() => {
+    return () => {
+      if (generateQuestionTimeoutRef.current) {
+        clearTimeout(generateQuestionTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // 拖曳調整寬度的事件處理
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    setResizeStartX(e.clientX);
+    setResizeStartWidth(sidebarWidth);
+  };
+
+  // 全域滑鼠事件
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const deltaX = e.clientX - resizeStartX;
+      // 由於 sidepanel 在右邊，往左拉（負的 deltaX）應該擴大寬度
+      const newWidth = resizeStartWidth - deltaX;
+      
+      // 限制寬度範圍
+      const constrainedWidth = Math.max(280, Math.min(600, newWidth));
+      setSidebarWidth(constrainedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, resizeStartX, resizeStartWidth]);
 
   const loadProjects = async () => {
     setLoading(true);
@@ -139,13 +291,18 @@ const SidePanel: React.FC<SidePanelProps> = ({
   return (
     <>
     {/* 桌面版側邊欄 */}
-    <div className={`hidden md:flex flex-col border-l transition-all duration-300 h-full overflow-hidden ${
-      isCollapsed ? 'w-8' : 'w-80'
-    } ${
-      isDarkMode 
-        ? 'bg-dark-bg-secondary border-gray-600' 
-        : 'bg-white border-gray-300'
-    }`}>
+    <div 
+      className={`hidden md:flex flex-col border-l h-full overflow-hidden relative ${
+        isResizing ? '' : 'transition-all duration-300'
+      } ${
+        isDarkMode 
+          ? 'bg-dark-bg-secondary border-gray-600' 
+          : 'bg-white border-gray-300'
+      }`}
+      style={{ 
+        width: isCollapsed ? '32px' : `${sidebarWidth}px` 
+      }}
+    >
       {isCollapsed ? (
         <button
           onClick={() => setIsCollapsed(false)}
@@ -157,7 +314,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
         </button>
       ) : (
         <div className="h-full flex flex-col overflow-hidden">
-          {/* 頂部標題 + 收合按鈕 */}
+          {/* 頂部標題 + 收合按鈕 + 標籤切換 */}
           <div className={`border-b flex-shrink-0 ${
             isDarkMode ? 'border-gray-600' : 'border-gray-200'
           }`}>
@@ -165,7 +322,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
               <h2 className={`text-lg font-semibold ${
                 isDarkMode ? 'text-dark-text' : 'text-gray-900'
               }`}>
-                專案管理
+                側邊欄
               </h2>
               <button
                 onClick={() => setIsCollapsed(true)}
@@ -179,14 +336,50 @@ const SidePanel: React.FC<SidePanelProps> = ({
                 ▶
               </button>
             </div>
+            
+            {/* 標籤切換 */}
+            <div className="flex">
+              <button
+                onClick={() => setActiveTab('projects')}
+                className={`flex-1 px-4 py-2 flex items-center justify-center gap-2 transition-colors border-b-2 ${
+                  activeTab === 'projects'
+                    ? isDarkMode
+                      ? 'text-blue-400 border-blue-400'
+                      : 'text-blue-600 border-blue-600'
+                    : isDarkMode
+                      ? 'text-gray-400 border-transparent hover:text-gray-300'
+                      : 'text-gray-600 border-transparent hover:text-gray-700'
+                }`}
+              >
+                <FolderOpen className="w-4 h-4" />
+                <span className="text-sm">專案</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('ai')}
+                className={`flex-1 px-4 py-2 flex items-center justify-center gap-2 transition-colors border-b-2 ${
+                  activeTab === 'ai'
+                    ? isDarkMode
+                      ? 'text-blue-400 border-blue-400'
+                      : 'text-blue-600 border-blue-600'
+                    : isDarkMode
+                      ? 'text-gray-400 border-transparent hover:text-gray-300'
+                      : 'text-gray-600 border-transparent hover:text-gray-700'
+                }`}
+              >
+                <Bot className="w-4 h-4" />
+                <span className="text-sm">AI 助手</span>
+              </button>
+            </div>
           </div>
           
           {/* 內容區域 */}
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-            <div className="p-4">
-              {/* 專案列表視圖 */}
-              <div className="space-y-4">
-                {loading ? (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {activeTab === 'projects' ? (
+              /* 專案列表 */
+              <div className="h-full overflow-y-auto overflow-x-hidden">
+                <div className="p-4">
+                  <div className="space-y-4">
+                    {loading ? (
                   <div className="text-center py-8">
                     <div className={`animate-spin rounded-full h-8 w-8 border-b-2 mx-auto ${
                       isDarkMode ? 'border-blue-800' : 'border-blue-500'
@@ -401,12 +594,49 @@ const SidePanel: React.FC<SidePanelProps> = ({
                         )}
                       </div>
                     )}
-                  </>
+                    </>
+                  )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* AI 助手 */
+              <div className="h-full">
+                {whiteboardData ? (
+                  <AIChatPanelStream 
+                    whiteboardData={whiteboardData} 
+                    preloadedQuestions={quickQuestions}
+                    isLoadingQuestions={isLoadingQuestions}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <Bot className={`w-12 h-12 mx-auto mb-3 ${
+                        isDarkMode ? 'text-gray-600' : 'text-gray-300'
+                      }`} />
+                      <p className={`text-sm ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                      }`}>
+                        載入白板資料中...
+                      </p>
+                    </div>
+                  </div>
                 )}
               </div>
-            </div>
+            )}
           </div>
         </div>
+      )}
+
+      {/* 左邊緣拖曳調整區域 */}
+      {!isCollapsed && (
+        <div
+          className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-blue-500 transition-colors ${
+            isResizing ? 'bg-blue-500' : 'bg-transparent hover:bg-opacity-50'
+          }`}
+          onMouseDown={handleResizeMouseDown}
+          title="拖曳調整側邊欄寬度"
+        />
       )}
 
       {/* 編輯專案對話框 */}

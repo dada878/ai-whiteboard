@@ -5272,6 +5272,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
       <SidePanel 
         currentProject={currentProject}
         syncStatus={syncStatus}
+        whiteboardData={whiteboardData}
         onProjectSelect={async (projectId) => {
           // 切換專案
           try {
