@@ -1023,70 +1023,79 @@ const Whiteboard: React.FC = () => {
 
   // 載入專案資料
   useEffect(() => {
-    // 依據登入使用者切換專案命名空間
-    ProjectService.setUserId(user?.id || null);
     const loadProjectData = async () => {
-      // 初始化預設專案
-      ProjectService.initializeDefaultProject();
+      // 依據登入使用者切換專案命名空間
+      ProjectService.setUserId(user?.id || null);
       
-      // 獲取當前專案 ID
-      let projectId = ProjectService.getCurrentProjectId();
-      
-      // 如果沒有當前專案，選擇第一個專案
-      if (!projectId) {
-        const projects = ProjectService.getAllProjects();
-        if (projects.length > 0) {
-          projectId = projects[0].id;
-          ProjectService.setCurrentProject(projectId);
-        }
+      if (!user?.id) {
+        // 未登入時清空狀態
+        setWhiteboardData({ notes: [], edges: [], groups: [], images: [] });
+        setCurrentProjectId(null);
+        setCurrentProject(null);
+        return;
       }
       
-      if (projectId) {
-        setCurrentProjectId(projectId);
+      try {
+        // 初始化預設專案
+        await ProjectService.initializeDefaultProject();
         
-        // 更新當前專案資訊
-        const projects = ProjectService.getAllProjects();
-        const project = projects.find(p => p.id === projectId);
-        setCurrentProject(project || null);
+        // 獲取當前專案 ID
+        let projectId = ProjectService.getCurrentProjectId();
         
-        
-        // 從本地載入
-        const localData = ProjectService.loadProjectData(projectId);
-        console.log('=== Loading project data from local ===');
-        console.log('Project ID:', projectId);
-        if (localData) {
-          console.log('Local data found:', {
-            notes: localData.notes?.length || 0,
-            edges: localData.edges?.length || 0,
-            groups: localData.groups?.length || 0,
-            images: localData.images?.length || 0
-          });
-          
-          // Check for problematic image URLs and fix positions
-          if (localData.images) {
-            localData.images = localData.images.map((img, index) => {
-              console.log(`Image ${index}:`, {
-                id: img.id,
-                filename: img.filename,
-                urlType: img.url === '[LOCAL_IMAGE]' ? 'INVALID_PLACEHOLDER' : img.url.startsWith('data:') ? 'base64' : 'url',
-                urlLength: img.url.length,
-                position: { x: img.x, y: img.y }
-              });
-              
-              // 修正異常的座標
-              if (Math.abs(img.x) > 10000 || Math.abs(img.y) > 10000) {
-                console.warn(`Image ${img.id} has invalid position, resetting to default`);
-                return {
-                  ...img,
-                  x: 100 + index * 350, // 水平排列
-                  y: 100
-                };
-              }
-              return img;
-            });
+        // 如果沒有當前專案，選擇第一個專案
+        if (!projectId) {
+          const projects = await ProjectService.getAllProjects();
+          if (projects.length > 0) {
+            projectId = projects[0].id;
+            ProjectService.setCurrentProject(projectId);
           }
+        }
+        
+        if (projectId) {
+          setCurrentProjectId(projectId);
           
-          setWhiteboardData(localData);
+          // 更新當前專案資訊
+          const projects = await ProjectService.getAllProjects();
+          const project = projects.find(p => p.id === projectId);
+          setCurrentProject(project || null);
+          
+          // 從 Firebase 載入
+          const projectData = await ProjectService.loadProjectData(projectId);
+          console.log('=== Loading project data from Firebase ===');
+          console.log('Project ID:', projectId);
+          if (projectData) {
+            console.log('Firebase data found:', {
+              notes: projectData.notes?.length || 0,
+              edges: projectData.edges?.length || 0,
+              groups: projectData.groups?.length || 0,
+              images: projectData.images?.length || 0
+            });
+            
+            // Check for problematic image URLs and fix positions
+            if (projectData.images) {
+              projectData.images = projectData.images.map((img, index) => {
+                console.log(`Image ${index}:`, {
+                  id: img.id,
+                  filename: img.filename,
+                  urlType: img.url === '[LOCAL_IMAGE]' ? 'INVALID_PLACEHOLDER' : img.url.startsWith('data:') ? 'base64' : 'url',
+                  urlLength: img.url.length,
+                  position: { x: img.x, y: img.y }
+                });
+                
+                // 修正異常的座標
+                if (Math.abs(img.x) > 10000 || Math.abs(img.y) > 10000) {
+                  console.warn(`Image ${img.id} has invalid position, resetting to default`);
+                  return {
+                    ...img,
+                    x: 100 + index * 350, // 水平排列
+                    y: 100
+                  };
+                }
+                return img;
+              });
+            }
+            
+            setWhiteboardData(projectData);
             setLastSaveTime(new Date());
             
             // 恢復視窗狀態
@@ -3120,7 +3129,7 @@ const Whiteboard: React.FC = () => {
       });
 
       // 延遲重新啟用即時同步，並確保不會覆蓋本地更改
-      setTimeout(() => {
+      setTimeout(async () => {
         if (user?.id && currentProjectId) {
           // 重新啟用前先同步到雲端
           try {
@@ -5180,12 +5189,10 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
           } catch (error) {
             console.error('Failed to switch project:', error);
           }
-            
-            // 重置視圖
-            setZoomLevel(1);
-            setPanOffset({ x: 0, y: 0 });
-            
-          }
+          
+          // 重置視圖
+          setZoomLevel(1);
+          setPanOffset({ x: 0, y: 0 });
         }}
         onProjectCreate={async (name, description) => {
           // 創建新專案並切換到它
@@ -5218,23 +5225,24 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
             // 如果刪除的是當前專案，切換到第一個專案
             if (projectId === currentProjectId) {
               const projects = await ProjectService.getAllProjects();
-            if (projects.length > 0) {
-              const firstProject = projects[0];
-              setCurrentProjectId(firstProject.id);
-              setCurrentProject(firstProject);
-              
-              const projectData = await ProjectService.loadProjectData(firstProject.id);
-              if (projectData) {
-                setWhiteboardData(projectData);
+              if (projects.length > 0) {
+                const firstProject = projects[0];
+                setCurrentProjectId(firstProject.id);
+                setCurrentProject(firstProject);
+                
+                const projectData = await ProjectService.loadProjectData(firstProject.id);
+                if (projectData) {
+                  setWhiteboardData(projectData);
+                } else {
+                  setWhiteboardData({ notes: [], edges: [], groups: [], images: [] });
+                }
               } else {
+                // 沒有專案了，創建預設專案
+                const defaultProject = await ProjectService.createProject('我的白板', '預設專案');
+                setCurrentProjectId(defaultProject.id);
+                setCurrentProject(defaultProject);
                 setWhiteboardData({ notes: [], edges: [], groups: [], images: [] });
               }
-            } else {
-              // 沒有專案了，創建預設專案
-              const defaultProject = await ProjectService.createProject('我的白板', '預設專案');
-              setCurrentProjectId(defaultProject.id);
-              setCurrentProject(defaultProject);
-              setWhiteboardData({ notes: [], edges: [], groups: [], images: [] });
             }
           } catch (error) {
             console.error('Failed to delete project:', error);

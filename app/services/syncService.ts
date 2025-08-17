@@ -20,7 +20,8 @@ export class SyncService {
   
   private static syncInterval: NodeJS.Timeout | null = null;
 
-  // 同步所有專案
+  // @deprecated 此方法已廢棄：現在 ProjectService 完全依賴 Firebase，不需要本地與雲端同步
+  // 所有專案操作直接在 Firebase 中進行
   static async syncAllProjects(userId: string): Promise<void> {
     if (!userId || this.syncStatus.isSyncing) return;
 
@@ -28,76 +29,9 @@ export class SyncService {
       this.syncStatus.isSyncing = true;
       this.syncStatus.error = null;
 
-      // 獲取本地專案
-      const localProjects = ProjectService.getAllProjects();
-      
-      // 同步每個專案到雲端
-      for (const project of localProjects) {
-        await this.syncProjectToCloud(userId, project);
-      }
-
-      // 從雲端獲取專案
-      const response = await fetch('/api/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'sync'
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Sync API error response:', errorData);
-        throw new Error(`Failed to sync projects: ${errorData.error || response.statusText}`);
-      }
-
-      const { projects } = await response.json();
-      
-      // 合併雲端專案到本地
-      for (const cloudProject of projects) {
-        const localProjects = ProjectService.getAllProjects();
-        const localProject = localProjects.find(p => p.id === cloudProject.id);
-        if (!localProject) {
-          // 如果本地沒有，直接添加到本地專案列表
-          const newProject: Project = {
-            id: cloudProject.id,
-            name: cloudProject.name || '未命名專案',
-            description: cloudProject.description,
-            createdAt: new Date(cloudProject.createdAt || Date.now()),
-            updatedAt: new Date(cloudProject.updatedAt || Date.now())
-          };
-          
-          // 直接操作本地存儲，避免創建新的 UUID
-          const currentProjects = ProjectService.getAllProjects();
-          currentProjects.push(newProject);
-          
-          if (typeof window !== 'undefined' && localStorage) {
-            const projectsKey = ProjectService.getProjectsKey();
-            localStorage.setItem(projectsKey, JSON.stringify(currentProjects));
-          }
-          
-          // 獲取白板資料
-          const dataResponse = await fetch('/api/sync', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              action: 'load',
-              projectId: cloudProject.id
-            })
-          });
-
-          if (dataResponse.ok) {
-            const { data } = await dataResponse.json();
-            if (data) {
-              ProjectService.saveProjectData(cloudProject.id, data);
-            }
-          }
-        }
-      }
+      // 由於現在完全依賴 Firebase，這個方法已經不再需要
+      // ProjectService 的所有操作都直接與 Firebase 同步
+      console.log('syncAllProjects is deprecated - ProjectService now fully relies on Firebase');
 
       this.syncStatus.lastSyncTime = new Date();
     } catch (error) {
@@ -229,7 +163,7 @@ export class SyncService {
       this.syncStatus.isSyncing = true;
       
       // 獲取專案元數據
-      const project = ProjectService.getProject(projectId);
+      const project = await ProjectService.getProject(projectId);
       
       // Filter out base64 images to reduce payload size for cloud storage
       // Keep Firebase Storage URLs (they start with https://)
