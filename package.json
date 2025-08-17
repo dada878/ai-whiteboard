@@ -14,10 +14,12 @@
   "dependencies": {
     "@auth/firebase-adapter": "^2.10.0",
     "@types/uuid": "^10.0.0",
+    "date-fns": "^4.1.0",
     "firebase": "^12.0.0",
     "firebase-admin": "^12.7.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.2",
+    "lucide-react": "^0.539.0",
     "next": "15.4.2",
     "next-auth": "^4.24.11",
     "react": "19.1.0",

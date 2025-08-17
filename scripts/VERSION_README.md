@@ -1,27 +1,21 @@
-# 版本管理說明
+# 版本管理說明（簡化版）
 
-## 版本號來源
+## 版本資訊
 
-版本管理腳本 `update-version.js` 會從以下來源獲取版本信息：
+版本管理腳本 `update-version.js` 現在只追蹤兩個簡單的資訊：
 
-### 1. 版本號 (version)
-- **來源**: `package.json` 中的 `version` 字段
-- **範例**: `"0.1.0"`
-- **說明**: 主版本號，需要手動在 package.json 中更新
+### 1. Commit 編號 (commit)
+- **來源**: Git commit hash 的短版本
+- **命令**: `git rev-parse --short HEAD`
+- **範例**: `"9dbee63"`
+- **Production 支援**: 
+  - Vercel: `process.env.VERCEL_GIT_COMMIT_SHA`
+  - 其他 CI/CD: `process.env.GIT_COMMIT`
 
-### 2. 構建號 (build)
-按照優先順序從以下來源獲取：
-1. **Git commit count** (開發環境): `git rev-list --count HEAD`
-2. **環境變數 BUILD_NUMBER** (CI/CD): `process.env.BUILD_NUMBER`
-3. **Vercel Git SHA** (Vercel 部署): `process.env.VERCEL_GIT_COMMIT_SHA` (轉換為數字)
-4. **遞增邏輯** (回退): 上次構建號 + 1
-
-### 3. Git Commit Hash (lastCommit)
-按照優先順序從以下來源獲取：
-1. **Git command** (開發環境): `git rev-parse HEAD`
-2. **Vercel Git SHA** (Vercel 部署): `process.env.VERCEL_GIT_COMMIT_SHA`
-3. **環境變數 GIT_COMMIT** (其他 CI/CD): `process.env.GIT_COMMIT`
-4. **保持原值** (回退): 使用上次的 commit hash
+### 2. 建構時間 (buildDate)
+- **來源**: 當前時間戳記
+- **格式**: ISO 8601 時間格式
+- **範例**: `"2025-08-17T16:50:21.603Z"`
 
 ## Production 環境設置
 
@@ -32,20 +26,7 @@ Vercel 會自動提供以下環境變數：
 
 ### 其他 CI/CD 平台
 可以設置以下環境變數：
-- `BUILD_NUMBER`: 構建號
 - `GIT_COMMIT`: Git commit hash
-
-### 手動設置範例
-```bash
-# 設置構建號
-export BUILD_NUMBER=123
-
-# 設置 Git commit hash
-export GIT_COMMIT=abc123def456
-
-# 運行構建
-npm run build
-```
 
 ## 使用方式
 
@@ -67,19 +48,17 @@ npm run build
 - `public/version.json`: 前端可訪問的版本文件
 - `app/components/VersionDisplay.tsx`: 版本顯示元件
 
-## 版本格式
+## 版本格式（簡化版）
 
 ```json
 {
-  "version": "0.1.0",
-  "build": 49,
-  "lastCommit": "8a2270dbf3dae245b0d7873951e30c89c0619282",
-  "buildDate": "2025-08-17T16:34:27.335Z"
+  "commit": "9dbee63",
+  "buildDate": "2025-08-17T16:50:21.603Z"
 }
 ```
 
-## 注意事項
+## 顯示說明
 
-1. **更新主版本號**: 需要手動修改 `package.json` 中的 `version`
-2. **Production 部署**: 確保部署平台提供了正確的環境變數
-3. **版本顯示**: 前端會從 `/version.json` 載入並顯示版本信息
+- **縮小狀態**: 只顯示 commit 編號
+- **展開狀態**: 顯示 commit 編號和建構時間
+- **位置**: 右下角固定位置

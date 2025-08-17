@@ -16,6 +16,8 @@ npm run lint     # 執行 ESLint
 - 每次比較大的改動完成後，在 git commit 之前執行 `npm run lint` 確認沒有重大 lint error
 - 定期 `git commit`
 - 不要自行 `npm run dev`，我會執行
+- 為避免各種問題，幫我把每次下的 prompt 和對話都寫到 `PROMPTING_HISTORY.md` 裡面
+- 解決複雜問題、完成複雜系統時，記得在 docs 資料夾底下撰寫 Markdown 文件來紀錄
 
 ## 架構概覽
 

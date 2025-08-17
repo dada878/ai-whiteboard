@@ -3,9 +3,7 @@
 import { useState, useEffect } from 'react';
 
 interface VersionInfo {
-  version: string;
-  build: number;
-  lastCommit: string;
+  commit: string;
   buildDate: string;
 }
 
@@ -38,10 +36,6 @@ export default function VersionDisplay() {
     }
   };
 
-  const formatCommit = (commit: string) => {
-    return commit ? commit.substring(0, 7) : '';
-  };
-
   return (
     <div className="fixed bottom-4 right-4 z-50">
       <div 
@@ -53,18 +47,12 @@ export default function VersionDisplay() {
       >
         {isExpanded ? (
           <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1 min-w-[120px]">
-            <div className="font-semibold">v{versionInfo.version}</div>
-            <div>Build #{versionInfo.build}</div>
-            {versionInfo.lastCommit && (
-              <div>Commit: {formatCommit(versionInfo.lastCommit)}</div>
-            )}
-            {versionInfo.buildDate && (
-              <div>{formatDate(versionInfo.buildDate)}</div>
-            )}
+            <div className="font-semibold">Commit: {versionInfo.commit}</div>
+            <div>{formatDate(versionInfo.buildDate)}</div>
           </div>
         ) : (
           <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-            v{versionInfo.version}.{versionInfo.build}
+            {versionInfo.commit}
           </div>
         )}
       </div>

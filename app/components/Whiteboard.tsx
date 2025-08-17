@@ -14,6 +14,7 @@ import SidePanel from './SidePanel';
 import Templates from './Templates';
 import ProjectDialog from './ProjectDialog';
 import AIPreviewDialog from './AIPreviewDialog';
+import VersionDialog from './VersionDialog';
 import { StorageService } from '../services/storageService';
 import { AlignmentService } from '../services/alignmentService';
 import { useTheme } from '../contexts/ThemeContext';
@@ -23,6 +24,7 @@ import { SyncService, SyncStatus } from '../services/syncService';
 import { AnalyticsService } from '../services/analyticsService';
 import { RealAnalyticsService } from '../services/realAnalyticsService';
 import * as gtag from '../../lib/gtag';
+import { VersionService } from '../services/versionService';
 // import GATestButton from './GATestButton';
 
 const Whiteboard: React.FC = () => {
@@ -52,6 +54,7 @@ const Whiteboard: React.FC = () => {
   const [selectedImages, setSelectedImages] = useState<string[]>([]); // 多選圖片
   const [hoveredImage, setHoveredImage] = useState<string | null>(null); // 懸停的圖片
   const [dragHoveredGroup, setDragHoveredGroup] = useState<string | null>(null); // 拖拽時懸停的群組
+  const [draggedGroupHoveredGroup, setDraggedGroupHoveredGroup] = useState<string | null>(null); // 群組拖拽時懸停的目標群組
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [hoveredNote, setHoveredNote] = useState<string | null>(null);
@@ -81,6 +84,7 @@ const Whiteboard: React.FC = () => {
   const [isDraggingNote, setIsDraggingNote] = useState(false);
   const [isHoldingCmd, setIsHoldingCmd] = useState(false);
   const [showProjectDialog, setShowProjectDialog] = useState(false);
+  const [showVersionDialog, setShowVersionDialog] = useState(false);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [cloudSyncEnabled, setCloudSyncEnabled] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(SyncService.getSyncStatus());
@@ -142,9 +146,15 @@ const Whiteboard: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const whiteboardDataRef = useRef<WhiteboardData>(whiteboardData);
 
   const MIN_ZOOM = 0.25;
   const MAX_ZOOM = 3;
+
+  // 同步更新 whiteboardDataRef
+  useEffect(() => {
+    whiteboardDataRef.current = whiteboardData;
+  }, [whiteboardData]);
 
   // 包裝的 setWhiteboardData 函數，會同時標記本地變更時間
   const updateWhiteboardData = useCallback((
@@ -326,6 +336,32 @@ const Whiteboard: React.FC = () => {
     if (noteIds.length + imageIds.length < 2) return null;
     
     saveToHistory(whiteboardData);
+    
+    // 檢查所有選中的便利貼和圖片是否都在同一個群組內
+    const selectedNotesData = whiteboardData.notes.filter(n => noteIds.includes(n.id));
+    const selectedImagesData = (whiteboardData.images || []).filter(img => imageIds.includes(img.id));
+    
+    const allGroupIds = [
+      ...selectedNotesData.map(n => n.groupId).filter(Boolean),
+      ...selectedImagesData.map(img => img.groupId).filter(Boolean)
+    ];
+    
+    // 檢查是否所有項目都在同一個群組內
+    const uniqueGroupIds = [...new Set(allGroupIds)];
+    const isAllInSameGroup = uniqueGroupIds.length === 1 && 
+                             allGroupIds.length === (selectedNotesData.length + selectedImagesData.length);
+    
+    console.log(`[createGroup] Selected notes: ${noteIds.join(',')}`);
+    console.log(`[createGroup] All group IDs: ${allGroupIds.join(',')}`);
+    console.log(`[createGroup] Unique group IDs: ${uniqueGroupIds.join(',')}`);
+    console.log(`[createGroup] Is all in same group: ${isAllInSameGroup}`);
+    console.log(`[createGroup] Parent group ID param: ${parentGroupId}`);
+    
+    // 如果所有項目都在同一個群組內，且沒有指定父群組，則將該群組作為父群組
+    const finalParentGroupId = isAllInSameGroup && !parentGroupId ? uniqueGroupIds[0] : parentGroupId;
+    
+    console.log(`[createGroup] Final parent group ID: ${finalParentGroupId}`);
+    
     const groupId = uuidv4();
     const groupColors = ['#E3F2FD', '#F3E5F5', '#E8F5E8', '#FFF3E0', '#FCE4EC'];
     const randomColor = groupColors[Math.floor(Math.random() * groupColors.length)];
@@ -337,7 +373,7 @@ const Whiteboard: React.FC = () => {
       createdAt: new Date(),
       noteIds: noteIds,
       imageIds: imageIds,
-      parentGroupId: parentGroupId,
+      parentGroupId: finalParentGroupId,
       childGroupIds: []
     };
 
@@ -345,7 +381,7 @@ const Whiteboard: React.FC = () => {
       ...prev,
       groups: [...(prev.groups || []), newGroup].map(group => {
         // 如果是父群組，更新其 childGroupIds
-        if (parentGroupId && group.id === parentGroupId) {
+        if (finalParentGroupId && group.id === finalParentGroupId) {
           return {
             ...group,
             childGroupIds: [...(group.childGroupIds || []), groupId]
@@ -355,12 +391,12 @@ const Whiteboard: React.FC = () => {
       }),
       notes: prev.notes.map(note => 
         noteIds.includes(note.id) 
-          ? { ...note, groupId }
+          ? { ...note, groupId }  // 所有選中的便利貼都設定為新群組的 ID
           : note
       ),
       images: (prev.images || []).map(img => 
         imageIds.includes(img.id) 
-          ? { ...img, groupId }
+          ? { ...img, groupId }  // 所有選中的圖片都設定為新群組的 ID
           : img
       )
     }));
@@ -876,6 +912,34 @@ const Whiteboard: React.FC = () => {
     }
   }, [selectedNotes, selectedImages, batchDragInitialPositions, whiteboardData.notes, whiteboardData.images, isHoldingCmd]);
 
+  // 檢查滑鼠是否在其他群組上（用於群組拖曳）
+  const checkMouseOverGroup = useCallback((mouseX: number, mouseY: number, draggedGroupId: string) => {
+    const draggedGroup = whiteboardData.groups?.find(g => g.id === draggedGroupId);
+    if (!draggedGroup) return null;
+    
+    // 如果被拖曳的群組已經有父群組，不能再成為子群組
+    if (draggedGroup.parentGroupId) return null;
+    
+    // 檢查所有群組，找出滑鼠所在的群組
+    for (const group of whiteboardData.groups || []) {
+      if (group.id === draggedGroupId) continue; // 不檢查自己
+      if (group.parentGroupId) continue; // 只能拖入頂層群組
+      
+      const groupBounds = getGroupBounds(group.id);
+      if (!groupBounds) continue;
+      
+      // 檢查滑鼠是否在群組範圍內
+      if (mouseX >= groupBounds.x && 
+          mouseX <= groupBounds.x + groupBounds.width &&
+          mouseY >= groupBounds.y && 
+          mouseY <= groupBounds.y + groupBounds.height) {
+        return group.id;
+      }
+    }
+    
+    return null;
+  }, [whiteboardData.groups, getGroupBounds]);
+  
   // 處理群組拖曳
   const handleGroupDrag = useCallback((groupId: string, deltaX: number, deltaY: number) => {
     if (!groupDragState || groupDragState.groupId !== groupId) return;
@@ -1032,6 +1096,8 @@ const Whiteboard: React.FC = () => {
         setWhiteboardData({ notes: [], edges: [], groups: [], images: [] });
         setCurrentProjectId(null);
         setCurrentProject(null);
+        // 停止自動備份
+        VersionService.stopAutoBackup();
         return;
       }
       
@@ -1107,6 +1173,15 @@ const Whiteboard: React.FC = () => {
             // 初始化歷史記錄
             setHistory([projectData]);
             setHistoryIndex(0);
+            
+            // 啟動自動備份
+            VersionService.startAutoBackup(
+              projectId,
+              () => whiteboardDataRef.current,
+              (error) => {
+                console.error('Auto-backup error:', error);
+              }
+            );
           } else {
             console.log('No Firebase data found for project:', projectId);
             // 初始化空白狀態
@@ -1137,6 +1212,11 @@ const Whiteboard: React.FC = () => {
     };
     
     loadProjectData();
+    
+    // 清理函數：組件卸載時停止自動備份
+    return () => {
+      VersionService.stopAutoBackup();
+    };
   }, [user]);
 
   // 處理雲端同步切換
@@ -1511,9 +1591,10 @@ const Whiteboard: React.FC = () => {
           return;
         }
         
-        // 情況2: 選中多個便利貼/圖片，創建普通群組
+        // 情況2: 選中多個便利貼/圖片，創建群組（會自動偵測是否需要建立子群組）
         if (selectedNotes.length + selectedImages.length >= 2) {
-          console.log(`GROUP_SELECT: Creating normal group for notes/images`);
+          console.log(`GROUP_SELECT: Creating group for notes/images`);
+          // createGroup 函數會自動偵測選中的項目是否都在同一群組內，並建立子群組
           createGroup(selectedNotes, selectedImages);
         }
         return;
@@ -1960,10 +2041,47 @@ const Whiteboard: React.FC = () => {
       const deltaY = currentPos.y - startPos.y;
       
       handleGroupDrag(groupDragState.groupId, deltaX, deltaY);
+      
+      // 檢查滑鼠是否在其他群組上
+      const hoveredGroupId = checkMouseOverGroup(currentPos.x, currentPos.y, groupDragState.groupId);
+      setDraggedGroupHoveredGroup(hoveredGroupId);
     };
 
     const handleGlobalMouseUp = () => {
+      // 檢查是否需要將群組變成子群組
+      if (groupDragState && draggedGroupHoveredGroup) {
+        const draggedGroup = whiteboardData.groups?.find(g => g.id === groupDragState.groupId);
+        const targetGroup = whiteboardData.groups?.find(g => g.id === draggedGroupHoveredGroup);
+        
+        if (draggedGroup && targetGroup && !draggedGroup.parentGroupId) {
+          // 將群組變成子群組
+          saveToHistory(whiteboardData);
+          
+          updateWhiteboardData(prev => ({
+            ...prev,
+            groups: (prev.groups || []).map(group => {
+              if (group.id === groupDragState.groupId) {
+                // 設定父群組
+                return {
+                  ...group,
+                  parentGroupId: draggedGroupHoveredGroup
+                };
+              }
+              if (group.id === draggedGroupHoveredGroup) {
+                // 更新父群組的子群組列表
+                return {
+                  ...group,
+                  childGroupIds: [...(group.childGroupIds || []), groupDragState.groupId]
+                };
+              }
+              return group;
+            })
+          }));
+        }
+      }
+      
       setGroupDragState(null);
+      setDraggedGroupHoveredGroup(null);
     };
 
     document.addEventListener('mousemove', handleGlobalMouseMove);
@@ -1973,7 +2091,7 @@ const Whiteboard: React.FC = () => {
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [groupDragState, viewportToLogical, handleGroupDrag]);
+  }, [groupDragState, viewportToLogical, handleGroupDrag, checkMouseOverGroup, draggedGroupHoveredGroup, whiteboardData, saveToHistory, updateWhiteboardData]);
 
   // 畫布拖曳相關處理函數
   const handleCanvasMouseDown = useCallback((event: React.MouseEvent) => {
@@ -2598,7 +2716,9 @@ const Whiteboard: React.FC = () => {
       width: newNoteWidth,
       height: newNoteHeight,
       content: '',
-      color: '#FEF3C7'
+      color: '#FEF3C7',
+      // 如果原便利貼在群組內，新便利貼也加入同一群組
+      groupId: fromNote.groupId
     };
     
     // 保存歷史記錄
@@ -2689,7 +2809,9 @@ const Whiteboard: React.FC = () => {
       width: newNoteWidth,
       height: newNoteHeight,
       content: '',
-      color: '#FEF3C7'
+      color: '#FEF3C7',
+      // 如果原圖片在群組內，新便利貼也加入同一群組
+      groupId: fromImage.groupId
     };
     
     // 保存歷史記錄
@@ -4424,7 +4546,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                   group={group}
                   bounds={bounds}
                   isSelected={isSelected}
-                  isDragHovered={dragHoveredGroup === group.id}
+                  isDragHovered={dragHoveredGroup === group.id || draggedGroupHoveredGroup === group.id}
                   zoomLevel={zoomLevel}
                   shouldAutoFocus={autoFocusGroupId === group.id}
                   onAutoFocusHandled={() => setAutoFocusGroupId(null)}
@@ -4597,7 +4719,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                       group={childGroup}
                       bounds={bounds}
                       isSelected={isSelected}
-                      isDragHovered={dragHoveredGroup === childGroup.id}
+                      isDragHovered={dragHoveredGroup === childGroup.id || draggedGroupHoveredGroup === childGroup.id}
                       zoomLevel={zoomLevel}
                       shouldAutoFocus={autoFocusGroupId === childGroup.id}
                       onAutoFocusHandled={() => setAutoFocusGroupId(null)}
@@ -5264,6 +5386,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         selectedCount={selectedNotes.length}
         aiLoadingStates={aiLoadingStates}
         onImageUpload={handleImageUpload}
+        onVersions={() => setShowVersionDialog(true)}
         onExport={async (format) => {
           try {
             if (format === 'json') {
@@ -5468,6 +5591,32 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
           });
           
           
+        }}
+      />
+      
+      {/* 版本管理對話框 */}
+      <VersionDialog
+        isOpen={showVersionDialog}
+        onClose={() => setShowVersionDialog(false)}
+        projectId={currentProjectId}
+        currentData={whiteboardData}
+        onRestore={(restoredData) => {
+          // 還原版本資料
+          setWhiteboardData(restoredData);
+          // 重置歷史記錄
+          setHistory([restoredData]);
+          setHistoryIndex(0);
+          // 重新啟動自動備份
+          if (currentProjectId) {
+            VersionService.stopAutoBackup();
+            VersionService.startAutoBackup(
+              currentProjectId,
+              () => whiteboardDataRef.current,
+              (error) => {
+                console.error('Auto-backup error:', error);
+              }
+            );
+          }
         }}
       />
       

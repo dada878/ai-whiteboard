@@ -17,6 +17,7 @@ interface FloatingToolbarProps {
   onImport?: () => void;
   onImageUpload?: (file: File) => void;
   onTemplate?: () => void;
+  onVersions?: () => void;
   selectedCount?: number;
   onAIAnalyzeSelection?: () => void;
   onAISuggestImprovements?: () => void;
@@ -53,6 +54,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   onImport,
   onImageUpload,
   onTemplate,
+  onVersions,
   selectedCount = 0,
   onAIAnalyzeSelection,
   onAISuggestImprovements,
@@ -398,6 +400,20 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
           )}
 
           <div className="w-px h-8 bg-gray-300" />
+
+          {/* 版本管理 */}
+          {onVersions && (
+            <Tooltip content="版本記錄">
+              <button
+                onClick={onVersions}
+                className="p-2.5 rounded-lg transition-all hover:shadow-sm hover:bg-gray-100 text-gray-700"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+            </Tooltip>
+          )}
 
           {/* 匯出功能 */}
           <div className="relative">
