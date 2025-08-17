@@ -53,8 +53,7 @@ export default function PlusPage() {
       <div className="p-6 rounded-xl border border-gray-200 bg-white">
         <h2 className="text-xl font-semibold mb-3">如何生效？</h2>
         <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
-          <li>前往 Buy Me a Coffee 完成支持。</li>
-          <li>Webhook 會通知我們，將您的 Email 授權為 Plus。</li>
+          <li>前往 Buy Me a Coffee 使用相同的 Email 完成贊助 3 美元。</li>
           <li>如果已登入，最多 1 分鐘內會自動更新；或重新整理頁面。</li>
         </ol>
         <p className="text-xs text-gray-500 mt-4">

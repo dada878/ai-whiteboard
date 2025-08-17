@@ -159,7 +159,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
   };
 
   return (
-    <div className={`border-l transition-all duration-300 ${
+    <>
+    {/* 桌面版側邊欄 */}
+    <div className={`hidden md:block border-l transition-all duration-300 ${
       isCollapsed ? 'w-8' : 'w-80'
     } ${
       isDarkMode 
@@ -652,6 +654,87 @@ const SidePanel: React.FC<SidePanelProps> = ({
         />
       )}
     </div>
+
+    {/* 行動版模態框 */}
+    <div className={`md:hidden fixed inset-0 z-50 transition-all duration-300 ${
+      !isCollapsed ? 'pointer-events-auto' : 'pointer-events-none'
+    }`}>
+      {/* 背景遮罩 */}
+      <div 
+        className={`absolute inset-0 bg-black transition-opacity duration-300 ${
+          !isCollapsed ? 'opacity-50' : 'opacity-0'
+        }`}
+        onClick={() => setIsCollapsed(true)}
+      />
+      
+      {/* 內容面板 */}
+      <div className={`absolute right-0 top-0 bottom-0 w-full max-w-sm transition-transform duration-300 ${
+        !isCollapsed ? 'translate-x-0' : 'translate-x-full'
+      } ${
+        isDarkMode 
+          ? 'bg-dark-bg-secondary' 
+          : 'bg-white'
+      }`}>
+        <div className="flex flex-col h-full">
+          {/* 標題欄 */}
+          <div className={`flex items-center justify-between px-4 py-3 border-b ${
+            isDarkMode ? 'border-gray-700' : 'border-gray-200'
+          }`}>
+            <h2 className={`text-lg font-semibold ${
+              isDarkMode ? 'text-gray-200' : 'text-gray-800'
+            }`}>
+              {activeTab === 'ai' ? 'AI 結果' : '專案管理'}
+            </h2>
+            <button
+              onClick={() => setIsCollapsed(true)}
+              className={`p-2 rounded-lg transition-colors ${
+                isDarkMode 
+                  ? 'hover:bg-gray-700 text-gray-400' 
+                  : 'hover:bg-gray-100 text-gray-600'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          {/* 內容區域 */}
+          <div className="flex-1 overflow-y-auto">
+            {aiResult && (
+              <div className="p-4">
+                <div className={`rounded-lg p-4 ${
+                  isDarkMode 
+                    ? 'bg-dark-bg-tertiary text-gray-300' 
+                    : 'bg-gray-50 text-gray-700'
+                }`}>
+                  <div className="prose prose-sm max-w-none whitespace-pre-wrap">
+                    {aiResult}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* 行動版浮動按鈕 - 用於打開側邊欄 */}
+    <button
+      onClick={() => setIsCollapsed(false)}
+      className={`md:hidden fixed top-20 right-4 z-40 p-3 rounded-full shadow-lg transition-all ${
+        isCollapsed ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full pointer-events-none'
+      } ${
+        isDarkMode 
+          ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+          : 'bg-purple-500 hover:bg-purple-600 text-white'
+      }`}
+    >
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      </svg>
+    </button>
+    </>
   );
 };
 

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
+import Confetti from './Confetti';
 
 interface PlusWelcomeDialogProps {
   isOpen: boolean;
@@ -11,15 +12,22 @@ interface PlusWelcomeDialogProps {
 export default function PlusWelcomeDialog({ isOpen, onClose }: PlusWelcomeDialogProps) {
   const { isDarkMode } = useTheme();
   const [isVisible, setIsVisible] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setIsVisible(true);
+      // 延遲一點顯示，讓動畫更流暢
+      setTimeout(() => {
+        setIsVisible(true);
+        // 彩帶在 dialog 顯示後觸發
+        setTimeout(() => setShowConfetti(true), 100);
+      }, 10);
     }
   }, [isOpen]);
 
   const handleClose = () => {
     setIsVisible(false);
+    setShowConfetti(false);
     setTimeout(onClose, 300); // 等待動畫結束
   };
 
@@ -59,19 +67,26 @@ export default function PlusWelcomeDialog({ isOpen, onClose }: PlusWelcomeDialog
   ];
 
   return (
-    <div 
-      className={`fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-300 ${
-        isVisible ? 'opacity-100' : 'opacity-0'
-      }`}
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.7)' }}
-      onClick={handleClose}
-    >
+    <React.Fragment>
+      <Confetti isActive={showConfetti} />
       <div 
-        className={`relative w-full max-w-2xl mx-4 rounded-2xl shadow-2xl transition-all duration-300 transform ${
-          isVisible ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'
-        } ${isDarkMode ? 'bg-dark-bg-secondary' : 'bg-white'}`}
-        onClick={(e) => e.stopPropagation()}
+        className={`fixed inset-0 z-50 flex items-center justify-center transition-all duration-500 ${
+          isVisible ? 'opacity-100 backdrop-blur-sm' : 'opacity-0 pointer-events-none'
+        }`}
+        style={{ backgroundColor: isVisible ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0)' }}
+        onClick={handleClose}
       >
+        <div 
+          className={`relative w-full max-w-2xl mx-4 rounded-2xl shadow-2xl transition-all duration-500 ${
+            isVisible 
+              ? 'scale-100 translate-y-0 opacity-100' 
+              : 'scale-75 translate-y-8 opacity-0'
+          } ${isDarkMode ? 'bg-dark-bg-secondary' : 'bg-white'}`}
+          style={{
+            animation: isVisible ? 'bounce-in 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)' : 'none'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
         {/* 關閉按鈕 */}
         <button
           onClick={handleClose}
@@ -87,12 +102,36 @@ export default function PlusWelcomeDialog({ isOpen, onClose }: PlusWelcomeDialog
         </button>
 
         {/* 頂部裝飾 */}
-        <div className="relative h-32 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-t-2xl overflow-hidden">
+        <div className="relative h-32 bg-gradient-to-br from-yellow-400 via-orange-400 to-pink-500 rounded-t-2xl overflow-hidden">
           <div className="absolute inset-0 bg-black bg-opacity-10"></div>
+          {/* 閃光效果 */}
+          <div 
+            className="absolute inset-0 opacity-30"
+            style={{
+              background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.7) 50%, transparent 60%)',
+              animation: isVisible ? 'shimmer 2s ease-out' : 'none'
+            }}
+          />
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
-              <div className="text-6xl mb-2">🎉</div>
-              <div className="text-white text-2xl font-bold drop-shadow-lg">歡迎成為 Plus 會員！</div>
+              <div 
+                className="text-6xl mb-2"
+                style={{
+                  animation: isVisible ? 'bounce 0.8s ease-out 0.3s' : 'none',
+                  display: 'inline-block'
+                }}
+              >🎉</div>
+              <div className="text-white text-2xl font-bold drop-shadow-lg">
+                歡迎成為 
+                <span className="inline-block ml-2 px-2 py-1 bg-white/20 rounded-lg backdrop-blur-sm"
+                  style={{
+                    animation: isVisible ? 'pulse 2s infinite' : 'none'
+                  }}
+                >
+                  Plus 會員
+                </span>
+                ！
+              </div>
             </div>
           </div>
           <div className="absolute -bottom-1 left-0 right-0 h-8 bg-gradient-to-t from-white/20 to-transparent"></div>
@@ -119,11 +158,15 @@ export default function PlusWelcomeDialog({ isOpen, onClose }: PlusWelcomeDialog
               {plusFeatures.map((feature, index) => (
                 <div 
                   key={index}
-                  className={`flex items-start space-x-3 p-3 rounded-lg transition-colors ${
+                  className={`flex items-start space-x-3 p-3 rounded-lg transition-all ${
                     isDarkMode 
                       ? 'hover:bg-dark-bg-tertiary' 
                       : 'hover:bg-gray-50'
-                  }`}
+                  } ${isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`}
+                  style={{
+                    transition: `all 0.5s cubic-bezier(0.4, 0, 0.2, 1) ${index * 0.1}s`,
+                    transform: isVisible ? 'translateX(0)' : 'translateX(-20px)'
+                  }}
                 >
                   <div className="text-2xl flex-shrink-0">{feature.icon}</div>
                   <div className="flex-1">
@@ -188,5 +231,7 @@ export default function PlusWelcomeDialog({ isOpen, onClose }: PlusWelcomeDialog
         </div>
       </div>
     </div>
+  </React.Fragment>
   );
 }
+

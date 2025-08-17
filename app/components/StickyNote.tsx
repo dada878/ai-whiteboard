@@ -628,7 +628,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
     <>
       <div
         ref={nodeRef}
-        className={`sticky-note absolute select-none ${(isSelected || isPreviewSelected) ? 'z-20' : 'z-10'} ${
+        className={`sticky-note absolute select-none touch-manipulation ${(isSelected || isPreviewSelected) ? 'z-20' : 'z-10'} ${
           dragState?.isDragging ? 'cursor-grabbing' : 'cursor-pointer'
         } ${isAILoading ? 'ai-loading-effect' : ''}`}
         data-note-id={note.id}

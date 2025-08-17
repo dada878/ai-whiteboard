@@ -8,6 +8,7 @@ import StickyNoteComponent from './StickyNote';
 import EdgeComponent from './Edge';
 import GroupComponent from './Group';
 import FloatingToolbar from './FloatingToolbar';
+import MobileMenu from './MobileMenu';
 import SidePanel from './SidePanel';
 import Notes from './Notes';
 import Templates from './Templates';
@@ -2981,7 +2982,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         id="whiteboard-canvas"
         ref={canvasRef}
         data-canvas-background
-        className={`flex-1 relative overflow-hidden transition-all select-none ${
+        className={`flex-1 relative overflow-hidden transition-all select-none touch-manipulation ${
           isDragging ? 'cursor-grabbing' : isSelecting ? 'cursor-crosshair' : 'cursor-default'
         }`}
         onMouseDown={handleCanvasMouseDown}
@@ -3483,8 +3484,9 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         onToggleCloudSync={handleToggleCloudSync}
       />
 
-      {/* 底部懸浮工具列 */}
-      <FloatingToolbar
+      {/* 桌面版底部懸浮工具列 - 只在大螢幕顯示 */}
+      <div className="hidden md:block">
+        <FloatingToolbar
         onAnalyze={handleAIAnalyze}
         onSummarize={handleAISummarize}
         onClear={handleClearCanvas}
@@ -3535,8 +3537,51 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         onAIAutoConnect={handleAIAutoConnect}
         onAISmartOrganize={handleAISmartOrganize}
         onAIAskSelection={handleAIAskSelection}
-        onAIConvergeNodes={handleAIConvergeNodes}
-      />
+          onAIConvergeNodes={handleAIConvergeNodes}
+        />
+      </div>
+
+      {/* 行動版選單 - 只在小螢幕顯示 */}
+      <div className="md:hidden">
+        <MobileMenu
+          onNewNote={() => {
+            const rect = canvasRef.current?.getBoundingClientRect();
+            if (rect) {
+              const centerX = rect.width / 2;
+              const centerY = rect.height / 2;
+              const logicalPoint = viewportToLogical(centerX, centerY);
+              addStickyNote(logicalPoint.x - 100, logicalPoint.y - 50);
+            }
+          }}
+          onTemplate={() => setShowTemplates(true)}
+          onNotes={() => setShowNotes(true)}
+          onSearch={() => console.log('Search')}
+          onExport={async (format) => {
+            try {
+              if (format === 'json') {
+                const { exportWhiteboard } = await import('../services/exportService');
+                await exportWhiteboard.asJSON(whiteboardData);
+                setAiResult('✅ 已成功匯出為 JSON 檔案');
+              } else if (format === 'png') {
+                const { exportWhiteboard } = await import('../services/exportService');
+                await exportWhiteboard.asPNG('whiteboard-canvas');
+                setAiResult('✅ 已成功匯出為 PNG 圖片');
+              } else if (format === 'pdf') {
+                const { exportWhiteboard } = await import('../services/exportService');
+                await exportWhiteboard.asPDF('whiteboard-canvas');
+                setAiResult('✅ 已成功匯出為 PDF 檔案');
+              }
+            } catch (error) {
+              console.error('匯出失敗:', error);
+              setAiResult('❌ 匯出失敗，請稍後再試');
+            }
+          }}
+          onClear={handleClearCanvas}
+          onAnalyze={handleAIAnalyze}
+          onSummarize={handleAISummarize}
+          selectedCount={selectedNotes.length}
+        />
+      </div>
 
       {/* 筆記面板 */}
       <Notes 
