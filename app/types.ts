@@ -26,12 +26,26 @@ export interface Group {
   color: string;
   createdAt: Date;
   noteIds: string[]; // 群組內便利貼的ID列表
+  imageIds?: string[]; // 群組內圖片的ID列表
+}
+
+export interface ImageElement {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  url: string;
+  filename?: string;
+  uploadedAt?: Date;
+  groupId?: string;  // 所屬群組 ID
 }
 
 export interface WhiteboardData {
   notes: StickyNote[];
   edges: Edge[];
   groups: Group[];
+  images?: ImageElement[];
   viewport?: ViewportState;
 }
 

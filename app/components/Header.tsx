@@ -24,7 +24,12 @@ export default function Header({ onShowPlusWelcome }: HeaderProps) {
         <Link href="/" className={`text-lg sm:text-xl font-bold transition-colors ${
           isDarkMode ? 'text-gray-100 hover:text-gray-300' : 'text-gray-900 hover:text-gray-700'
         }`}>
-          <span className="hidden sm:inline">ThinkBoard</span>
+          <span className="hidden sm:inline">
+            ThinkBoard
+            <span className={`font-normal ${
+              isDarkMode ? 'text-gray-400' : 'text-gray-500'
+            }`}>.app</span>
+          </span>
           <span className="sm:hidden">TB</span>
         </Link>
         <div className="flex items-center gap-2 sm:gap-3">

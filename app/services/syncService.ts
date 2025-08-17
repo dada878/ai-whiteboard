@@ -210,13 +210,41 @@ export class SyncService {
 
   // 保存專案資料到雲端
   static async saveProjectData(userId: string, projectId: string, data: WhiteboardData): Promise<void> {
-    if (!userId || !projectId) return;
+    console.log('=== SyncService.saveProjectData ===');
+    console.log('UserId:', userId);
+    console.log('ProjectId:', projectId);
+    console.log('Data contains:', {
+      notes: data.notes?.length || 0,
+      edges: data.edges?.length || 0,
+      groups: data.groups?.length || 0,
+      images: data.images?.length || 0
+    });
+    
+    if (!userId || !projectId) {
+      console.log('Missing userId or projectId, skipping sync');
+      return;
+    }
     
     try {
       this.syncStatus.isSyncing = true;
       
       // 獲取專案元數據
       const project = ProjectService.getProject(projectId);
+      
+      // Filter out base64 images to reduce payload size for cloud storage
+      // Keep Firebase Storage URLs (they start with https://)
+      const originalImages = data.images || [];
+      const cloudImages = originalImages.filter(img => {
+        // Keep images that are stored in Firebase Storage or other cloud services
+        // Only filter out base64 encoded images
+        return !img.url.startsWith('data:');
+      });
+      console.log(`Filtering images: ${originalImages.length} total, ${cloudImages.length} will be synced to cloud`);
+      
+      const cloudData = {
+        ...data,
+        images: cloudImages
+      };
       
       const response = await fetch('/api/sync', {
         method: 'POST',
@@ -226,7 +254,7 @@ export class SyncService {
         body: JSON.stringify({
           action: 'save',
           projectId: projectId,
-          data: data,
+          data: cloudData,
           projectMetadata: project ? {
             name: project.name,
             description: project.description,
@@ -278,6 +306,9 @@ export class SyncService {
       ),
       groups: [...localData.groups, ...cloudData.groups].filter((group, index, self) => 
         index === self.findIndex((g) => g.id === group.id)
+      ),
+      images: [...(localData.images || []), ...(cloudData.images || [])].filter((image, index, self) => 
+        index === self.findIndex((i) => i.id === image.id)
       )
     };
   }

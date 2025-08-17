@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Edge, StickyNote } from '../types';
+import { Edge, StickyNote, ImageElement } from '../types';
 
 interface EdgeComponentProps {
   edge: Edge;
   notes: StickyNote[];
+  images?: ImageElement[];
   isSelected?: boolean;
   onSelect?: () => void;
   onDelete?: () => void;
@@ -14,16 +15,23 @@ interface EdgeComponentProps {
 const EdgeComponent: React.FC<EdgeComponentProps> = ({ 
   edge, 
   notes, 
+  images = [],
   isSelected = false, 
   onSelect, 
   onDelete 
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   
+  // 查找起點和終點（可能是便利貼或圖片）
   const fromNote = notes.find(note => note.id === edge.from);
+  const fromImage = images.find(img => img.id === edge.from);
   const toNote = notes.find(note => note.id === edge.to);
+  const toImage = images.find(img => img.id === edge.to);
 
-  if (!fromNote || !toNote) return null;
+  const fromElement = fromNote || fromImage;
+  const toElement = toNote || toImage;
+
+  if (!fromElement || !toElement) return null;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -36,11 +44,11 @@ const EdgeComponent: React.FC<EdgeComponentProps> = ({
     }
   };
 
-  // 計算連線的起點和終點
-  const fromX = fromNote.x + fromNote.width / 2;
-  const fromY = fromNote.y + fromNote.height / 2;
-  const toX = toNote.x + toNote.width / 2;
-  const toY = toNote.y + toNote.height / 2;
+  // 計算連線的起點和終點（統一處理便利貼和圖片）
+  const fromX = fromElement.x + fromElement.width / 2;
+  const fromY = fromElement.y + fromElement.height / 2;
+  const toX = toElement.x + toElement.width / 2;
+  const toY = toElement.y + toElement.height / 2;
 
   // 計算箭頭角度
   const angle = Math.atan2(toY - fromY, toX - fromX);
@@ -63,8 +71,8 @@ const EdgeComponent: React.FC<EdgeComponentProps> = ({
   
   // 調整起點和終點位置，留出間距避免箭頭被遮擋
   const gap = 15; // 間距
-  const fromDistance = getDistanceToEdge(fromNote.width, fromNote.height, angle) + gap;
-  const toDistance = getDistanceToEdge(toNote.width, toNote.height, angle) + gap;
+  const fromDistance = getDistanceToEdge(fromElement.width, fromElement.height, angle) + gap;
+  const toDistance = getDistanceToEdge(toElement.width, toElement.height, angle) + gap;
   
   const adjustedFromX = fromX + Math.cos(angle) * fromDistance;
   const adjustedFromY = fromY + Math.sin(angle) * fromDistance;

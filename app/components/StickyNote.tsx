@@ -23,6 +23,7 @@ interface StickyNoteComponentProps {
   onAIBrainstorm: () => void;
   onAskAI?: () => void;
   onStartConnection: () => void;
+  onQuickConnect?: (direction: 'top' | 'right' | 'bottom' | 'left') => void;
   onBatchColorChange?: (color: string) => void; // 批量顏色變更
   onBatchCopy?: () => void; // 批量複製
   onBatchMove?: (deltaX: number, deltaY: number) => void; // 批量移動
@@ -67,6 +68,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
   onAIBrainstorm,
   onAskAI,
   onStartConnection,
+  onQuickConnect,
   onBatchColorChange,
   onBatchCopy,
   onBatchMove,
@@ -875,7 +877,13 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                     e.stopPropagation();
                     onStartConnection();
                   }}
-                  title="開始連接"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onQuickConnect) {
+                      onQuickConnect('top');
+                    }
+                  }}
+                  title="點擊快速連接 / 拖曳自由連接"
                 >
                   <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-md group-hover:bg-green-600 group-hover:scale-150 transition-all duration-200" />
                 </div>
@@ -887,7 +895,13 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                     e.stopPropagation();
                     onStartConnection();
                   }}
-                  title="開始連接"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onQuickConnect) {
+                      onQuickConnect('right');
+                    }
+                  }}
+                  title="點擊快速連接 / 拖曳自由連接"
                 >
                   <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-md group-hover:bg-green-600 group-hover:scale-150 transition-all duration-200" />
                 </div>
@@ -899,7 +913,13 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                     e.stopPropagation();
                     onStartConnection();
                   }}
-                  title="開始連接"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onQuickConnect) {
+                      onQuickConnect('bottom');
+                    }
+                  }}
+                  title="點擊快速連接 / 拖曳自由連接"
                 >
                   <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-md group-hover:bg-green-600 group-hover:scale-150 transition-all duration-200" />
                 </div>
@@ -911,7 +931,13 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                     e.stopPropagation();
                     onStartConnection();
                   }}
-                  title="開始連接"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onQuickConnect) {
+                      onQuickConnect('left');
+                    }
+                  }}
+                  title="點擊快速連接 / 拖曳自由連接"
                 >
                   <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-md group-hover:bg-green-600 group-hover:scale-150 transition-all duration-200" />
                 </div>

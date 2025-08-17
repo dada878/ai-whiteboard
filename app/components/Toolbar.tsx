@@ -7,9 +7,22 @@ interface ToolbarProps {
   onAnalyze: () => void;
   onSummarize: () => void;
   onClear?: () => void;
+  onImageUpload?: (file: File) => void;
 }
 
-const Toolbar: React.FC<ToolbarProps> = ({ onAnalyze, onSummarize, onClear }) => {
+const Toolbar: React.FC<ToolbarProps> = ({ onAnalyze, onSummarize, onClear, onImageUpload }) => {
+  const handleImageClick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/jpg,image/gif,image/webp';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file && onImageUpload) {
+        onImageUpload(file);
+      }
+    };
+    input.click();
+  };
   return (
     <div className="w-16 bg-gray-800 text-white flex flex-col items-center py-4 space-y-4">
       {/* Logo */}
@@ -31,6 +44,20 @@ const Toolbar: React.FC<ToolbarProps> = ({ onAnalyze, onSummarize, onClear }) =>
       >
         <span className="text-xl">📝</span>
       </button>
+      
+      {/* 分隔線 */}
+      <div className="w-8 h-px bg-gray-600" />
+      
+      {/* 圖片上傳 */}
+      {onImageUpload && (
+        <button
+          onClick={handleImageClick}
+          className="w-12 h-12 bg-purple-600 hover:bg-purple-700 rounded-lg flex items-center justify-center transition-colors"
+          title="上傳圖片"
+        >
+          <span className="text-xl">🖼️</span>
+        </button>
+      )}
       
       {/* 分隔線 */}
       <div className="w-8 h-px bg-gray-600" />

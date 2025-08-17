@@ -78,37 +78,6 @@ export default function LoginPage() {
             <span className="font-medium">使用 Google 帳號登入</span>
           </button>
 
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className={`w-full border-t ${
-                isDarkMode ? 'border-gray-700' : 'border-gray-300'
-              }`}></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className={`px-2 ${
-                isDarkMode ? 'bg-dark-bg-secondary text-gray-500' : 'bg-white text-gray-500'
-              }`}>
-                或
-              </span>
-            </div>
-          </div>
-
-          {/* Continue as Guest */}
-          <button
-            onClick={() => {
-              // 設置 localStorage 標記為訪客模式
-              localStorage.setItem('guestMode', 'true');
-              router.push('/');
-            }}
-            className={`w-full py-3 px-4 rounded-lg border transition-all ${
-              isDarkMode 
-                ? 'border-gray-700 hover:bg-gray-800 text-gray-400' 
-                : 'border-gray-300 hover:bg-gray-50 text-gray-600'
-            }`}
-          >
-            以訪客身份繼續
-          </button>
         </div>
 
         {/* Terms */}

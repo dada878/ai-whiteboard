@@ -253,6 +253,7 @@ export class ProjectService {
         notes: data.notes || [],
         edges: data.edges || [],
         groups: data.groups || [],
+        images: data.images || [],  // Add images array to the returned data
         viewport: data.viewport
       };
     } catch (error) {
@@ -263,11 +264,12 @@ export class ProjectService {
 
   // 生成專案縮圖（簡化版）
   private static generateThumbnail(data: WhiteboardData): string {
-    // 簡單的縮圖資訊，包含便利貼和連線數量
+    // 簡單的縮圖資訊，包含便利貼、連線、群組和圖片數量
     return JSON.stringify({
       noteCount: data.notes.length,
       edgeCount: data.edges.length,
-      groupCount: data.groups?.length || 0
+      groupCount: data.groups?.length || 0,
+      imageCount: data.images?.length || 0
     });
   }
 

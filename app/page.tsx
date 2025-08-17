@@ -8,19 +8,16 @@ import Header from './components/Header';
 import { useAuth } from './contexts/AuthContext';
 
 export default function Home() {
-  const { user, isLoading } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
 
   useEffect(() => {
     // 如果還在載入中，不做任何事
-    if (isLoading) return;
+    if (loading) return;
     
-    // 檢查是否為訪客模式
-    const isGuestMode = localStorage.getItem('guestMode') === 'true';
-    
-    // 如果用戶未登入且不是訪客模式，導向到 landing page
-    if (!user && !isGuestMode) {
+    // 如果用戶未登入，導向到 landing page
+    if (!user) {
       router.push('/landing');
       return;
     }
@@ -44,11 +41,20 @@ export default function Home() {
         return () => clearTimeout(timer);
       }
     }
-  }, [user, isLoading, router]);
+  }, [user, loading, router]);
 
   const handleShowPlusWelcome = () => {
     setShowWelcomeDialog(true);
   };
+
+  // 在載入過程中顯示載入畫面
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col">

@@ -3,10 +3,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { AIPreviewData } from './AIPreviewDialog';
 import { v4 as uuidv4 } from 'uuid';
-import { StickyNote, Edge, Group, WhiteboardData, NetworkAnalysis, NetworkConnection, Project } from '../types';
+import { StickyNote, Edge, Group, WhiteboardData, NetworkAnalysis, NetworkConnection, Project, ImageElement } from '../types';
 import StickyNoteComponent from './StickyNote';
 import EdgeComponent from './Edge';
 import GroupComponent from './Group';
+import ImageElementComponent from './ImageElement';
 import FloatingToolbar from './FloatingToolbar';
 import MobileMenu from './MobileMenu';
 import SidePanel from './SidePanel';
@@ -28,7 +29,8 @@ const Whiteboard: React.FC = () => {
   const [whiteboardData, setWhiteboardData] = useState<WhiteboardData>({
     notes: [],
     edges: [],
-    groups: []
+    groups: [],
+    images: []
   });
   const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null);
   // 歷史記錄系統
@@ -41,6 +43,9 @@ const Whiteboard: React.FC = () => {
   const [autoEditNoteId, setAutoEditNoteId] = useState<string | null>(null); // 需要自動編輯的便利貼 ID
   const [previewSelectedNotes, setPreviewSelectedNotes] = useState<string[]>([]); // 框選預覽
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]); // 多選圖片
+  const [hoveredImage, setHoveredImage] = useState<string | null>(null); // 懸停的圖片
   const [aiResult, setAiResult] = useState<string>('');
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -225,35 +230,44 @@ const Whiteboard: React.FC = () => {
   }, [whiteboardData.notes]);
 
   const deleteSelectedItems = useCallback(() => {
-    if (selectedNotes.length > 0 || selectedNote) {
-      saveToHistory(whiteboardData);
-      
-      // 清除焦點以防止視窗移動
-      if (document.activeElement && (document.activeElement as HTMLElement).blur) {
-        (document.activeElement as HTMLElement).blur();
-      }
-      
+    saveToHistory(whiteboardData);
+    
+    // 清除焦點以防止視窗移動
+    if (document.activeElement && (document.activeElement as HTMLElement).blur) {
+      (document.activeElement as HTMLElement).blur();
+    }
+    
+    const hasSelectedNotes = selectedNotes.length > 0 || selectedNote;
+    const hasSelectedImages = selectedImages.length > 0 || selectedImage;
+    
+    if (hasSelectedNotes || hasSelectedImages) {
       const notesToDelete = selectedNote ? [selectedNote] : selectedNotes;
+      const imagesToDelete = selectedImage && !selectedImages.includes(selectedImage) 
+        ? [selectedImage] 
+        : selectedImages;
       
       updateWhiteboardData(prev => ({
         notes: prev.notes.filter(note => !notesToDelete.includes(note.id)),
         edges: prev.edges.filter(edge => 
-          !notesToDelete.includes(edge.from) && !notesToDelete.includes(edge.to)
+          !notesToDelete.includes(edge.from) && !notesToDelete.includes(edge.to) &&
+          !imagesToDelete.includes(edge.from) && !imagesToDelete.includes(edge.to)
         ),
-        groups: prev.groups
+        groups: prev.groups,
+        images: (prev.images || []).filter(image => !imagesToDelete.includes(image.id))
       }));
       
       setSelectedNotes([]);
       setSelectedNote(null);
+      setSelectedImages([]);
+      setSelectedImage(null);
     } else if (selectedEdge) {
-      saveToHistory(whiteboardData);
       updateWhiteboardData(prev => ({
         ...prev,
         edges: prev.edges.filter(edge => edge.id !== selectedEdge)
       }));
       setSelectedEdge(null);
     }
-  }, [selectedNotes, selectedNote, selectedEdge, whiteboardData, saveToHistory]);
+  }, [selectedNotes, selectedNote, selectedImages, selectedImage, selectedEdge, whiteboardData, saveToHistory]);
 
   const moveSelectedNotes = useCallback((deltaX: number, deltaY: number) => {
     const notesToMove = selectedNote ? [selectedNote] : selectedNotes;
@@ -292,8 +306,8 @@ const Whiteboard: React.FC = () => {
   }, [selectedNotes, copySelectedNotes]);
 
   // 群組管理功能
-  const createGroup = useCallback((noteIds: string[]) => {
-    if (noteIds.length < 2) return null;
+  const createGroup = useCallback((noteIds: string[], imageIds: string[] = []) => {
+    if (noteIds.length + imageIds.length < 2) return null;
     
     saveToHistory(whiteboardData);
     const groupId = uuidv4();
@@ -305,7 +319,8 @@ const Whiteboard: React.FC = () => {
       name: `群組 ${(whiteboardData.groups || []).length + 1}`,
       color: randomColor,
       createdAt: new Date(),
-      noteIds: noteIds
+      noteIds: noteIds,
+      imageIds: imageIds
     };
 
     updateWhiteboardData(prev => ({
@@ -315,12 +330,19 @@ const Whiteboard: React.FC = () => {
         noteIds.includes(note.id) 
           ? { ...note, groupId }
           : note
+      ),
+      images: (prev.images || []).map(img => 
+        imageIds.includes(img.id) 
+          ? { ...img, groupId }
+          : img
       )
     }));
 
     setSelectedGroup(groupId);
     setSelectedNotes([]);
+    setSelectedImages([]);
     setSelectedNote(null);
+    setSelectedImage(null);
     setAutoFocusGroupId(groupId);
     
     return groupId;
@@ -338,11 +360,17 @@ const Whiteboard: React.FC = () => {
         note.groupId === groupId 
           ? { ...note, groupId: undefined }
           : note
+      ),
+      images: (prev.images || []).map(img => 
+        img.groupId === groupId 
+          ? { ...img, groupId: undefined }
+          : img
       )
     }));
 
-    // 取消群組後選中原本群組內的便利貼
+    // 取消群組後選中原本群組內的便利貼和圖片
     setSelectedNotes(group.noteIds);
+    setSelectedImages(group.imageIds || []);
     setSelectedGroup(null);
   }, [whiteboardData, saveToHistory]);
 
@@ -351,13 +379,19 @@ const Whiteboard: React.FC = () => {
   }, [whiteboardData.notes]);
 
   const getGroupBounds = useCallback((groupId: string) => {
+    const group = whiteboardData.groups?.find(g => g.id === groupId);
+    if (!group) return null;
+    
     const groupNotes = getGroupNotes(groupId);
-    if (groupNotes.length === 0) return null;
+    const groupImages = whiteboardData.images?.filter(img => img.groupId === groupId) || [];
+    
+    if (groupNotes.length === 0 && groupImages.length === 0) return null;
 
-    const minX = Math.min(...groupNotes.map(note => note.x));
-    const minY = Math.min(...groupNotes.map(note => note.y));
-    const maxX = Math.max(...groupNotes.map(note => note.x + note.width));
-    const maxY = Math.max(...groupNotes.map(note => note.y + note.height));
+    const allElements = [...groupNotes, ...groupImages];
+    const minX = Math.min(...allElements.map(el => el.x));
+    const minY = Math.min(...allElements.map(el => el.y));
+    const maxX = Math.max(...allElements.map(el => el.x + el.width));
+    const maxY = Math.max(...allElements.map(el => el.y + el.height));
 
     return {
       x: minX - 10,
@@ -365,7 +399,7 @@ const Whiteboard: React.FC = () => {
       width: maxX - minX + 20,
       height: maxY - minY + 20
     };
-  }, [getGroupNotes]);
+  }, [getGroupNotes, whiteboardData.groups, whiteboardData.images]);
 
   const updateGroupName = useCallback((groupId: string, newName: string) => {
     saveToHistory(whiteboardData);
@@ -503,6 +537,19 @@ const Whiteboard: React.FC = () => {
           }
         }
         return note;
+      }),
+      images: (prev.images || []).map(img => {
+        if (img.groupId === groupId) {
+          const initialPos = groupDragState.initialPositions[img.id];
+          if (initialPos) {
+            return {
+              ...img,
+              x: initialPos.x + deltaX,
+              y: initialPos.y + deltaY
+            };
+          }
+        }
+        return img;
       })
     }));
   }, [groupDragState]);
@@ -539,7 +586,40 @@ const Whiteboard: React.FC = () => {
         
         // 從本地載入
         const localData = ProjectService.loadProjectData(projectId);
+        console.log('=== Loading project data from local ===');
+        console.log('Project ID:', projectId);
         if (localData) {
+          console.log('Local data found:', {
+            notes: localData.notes?.length || 0,
+            edges: localData.edges?.length || 0,
+            groups: localData.groups?.length || 0,
+            images: localData.images?.length || 0
+          });
+          
+          // Check for problematic image URLs and fix positions
+          if (localData.images) {
+            localData.images = localData.images.map((img, index) => {
+              console.log(`Image ${index}:`, {
+                id: img.id,
+                filename: img.filename,
+                urlType: img.url === '[LOCAL_IMAGE]' ? 'INVALID_PLACEHOLDER' : img.url.startsWith('data:') ? 'base64' : 'url',
+                urlLength: img.url.length,
+                position: { x: img.x, y: img.y }
+              });
+              
+              // 修正異常的座標
+              if (Math.abs(img.x) > 10000 || Math.abs(img.y) > 10000) {
+                console.warn(`Image ${img.id} has invalid position, resetting to default`);
+                return {
+                  ...img,
+                  x: 100 + index * 350, // 水平排列
+                  y: 100
+                };
+              }
+              return img;
+            });
+          }
+          
           setWhiteboardData(localData);
           setLastSaveTime(new Date());
           
@@ -554,7 +634,7 @@ const Whiteboard: React.FC = () => {
           setHistoryIndex(0);
         } else {
           // 沒有資料時，初始化空的歷史記錄
-          const initialData = { notes: [], edges: [], groups: [] };
+          const initialData = { notes: [], edges: [], groups: [], images: [] };
           setHistory([initialData]);
           setHistoryIndex(0);
         }
@@ -640,7 +720,7 @@ const Whiteboard: React.FC = () => {
   // 自動儲存 - 每當白板資料變更時
   useEffect(() => {
     // 防止初始載入時觸發儲存
-    if (!currentProjectId || (whiteboardData.notes.length === 0 && whiteboardData.edges.length === 0)) {
+    if (!currentProjectId || (whiteboardData.notes.length === 0 && whiteboardData.edges.length === 0 && (!whiteboardData.images || whiteboardData.images.length === 0))) {
       return;
     }
 
@@ -813,8 +893,8 @@ const Whiteboard: React.FC = () => {
       // 建立群組 (Ctrl/Cmd + G)
       if (isCtrlOrCmd && (event.key === 'g' || event.key === 'G') && !event.shiftKey) {
         event.preventDefault();
-        if (selectedNotes.length >= 2) {
-          createGroup(selectedNotes);
+        if (selectedNotes.length + selectedImages.length >= 2) {
+          createGroup(selectedNotes, selectedImages);
         }
         return;
       }
@@ -1045,19 +1125,186 @@ const Whiteboard: React.FC = () => {
   }, [whiteboardData, saveToHistory]);
 
   // 坐標轉換輔助函數 - 將視口座標轉換為邏輯座標
+  // viewportX, viewportY 是相對於整個視窗的座標 (e.clientX, e.clientY)
   const viewportToLogical = useCallback((viewportX: number, viewportY: number) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     
     const rect = canvasRef.current.getBoundingClientRect();
+    // 轉換為相對於 canvas 元素的座標
     const canvasX = viewportX - rect.left;
     const canvasY = viewportY - rect.top;
     
-    // 先反向應用平移，再反向應用縮放
+    // 轉換為邏輯座標（考慮縮放和平移）
     const logicalX = (canvasX - panOffset.x) / zoomLevel;
     const logicalY = (canvasY - panOffset.y) / zoomLevel;
     
     return { x: logicalX, y: logicalY };
-  }, [zoomLevel, panOffset]);
+  }, [panOffset.x, panOffset.y, zoomLevel]);
+
+  // Image manipulation functions
+  const addImage = useCallback((url: string, x: number, y: number, filename?: string) => {
+    console.log('=== addImage called ===');
+    console.log('Adding image at position:', { x, y });
+    console.log('Filename:', filename);
+    console.log('URL:', url);
+    console.log('Current images before add:', whiteboardData.images?.length || 0);
+    
+    // 確保座標在合理範圍內
+    const safeX = isNaN(x) || Math.abs(x) > 10000 ? 100 : x;
+    const safeY = isNaN(y) || Math.abs(y) > 10000 ? 100 : y;
+    
+    if (safeX !== x || safeY !== y) {
+      console.warn('Image position was out of bounds, using safe position:', { safeX, safeY });
+    }
+    
+    saveToHistory(whiteboardData);
+    
+    const newImage: ImageElement = {
+      id: uuidv4(),
+      x: safeX,
+      y: safeY,
+      width: 300,
+      height: 200,
+      url,
+      filename,
+      uploadedAt: new Date()
+    };
+    
+    console.log('New image object created:', {
+      id: newImage.id,
+      url: newImage.url,
+      position: { x: newImage.x, y: newImage.y }
+    });
+
+    updateWhiteboardData(prev => {
+      console.log('Previous images:', prev.images?.length || 0);
+      const updatedImages = [...(prev.images || []), newImage];
+      console.log('Updated images array length:', updatedImages.length);
+      const newData = {
+        ...prev,
+        images: updatedImages
+      };
+      console.log('Returning new whiteboard data with images:', newData.images?.length);
+      return newData;
+    });
+
+    // Auto-select the new image
+    setSelectedImage(newImage.id);
+    setSelectedNote(null);
+    setSelectedNotes([]);
+    console.log('Image added and selected:', newImage.id);
+  }, [whiteboardData, saveToHistory]);
+
+  const updateImagePosition = useCallback((id: string, x: number, y: number) => {
+    updateWhiteboardData(prev => ({
+      ...prev,
+      images: (prev.images || []).map(img => 
+        img.id === id ? { ...img, x, y } : img
+      )
+    }));
+  }, []);
+
+  const updateImageSize = useCallback((id: string, width: number, height: number) => {
+    updateWhiteboardData(prev => ({
+      ...prev,
+      images: (prev.images || []).map(img => 
+        img.id === id ? { ...img, width, height } : img
+      )
+    }));
+  }, []);
+
+  const deleteImage = useCallback((id: string) => {
+    saveToHistory(whiteboardData);
+    
+    updateWhiteboardData(prev => ({
+      ...prev,
+      images: (prev.images || []).filter(img => img.id !== id)
+    }));
+    
+    if (selectedImage === id) {
+      setSelectedImage(null);
+    }
+  }, [whiteboardData, saveToHistory, selectedImage]);
+
+  // Handle image upload
+  const handleImageUpload = useCallback(async (file: File) => {
+    console.log('=== handleImageUpload called ===');
+    console.log('File:', file.name, 'Size:', file.size, 'Type:', file.type);
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      const isGuestMode = localStorage.getItem('guestMode') === 'true';
+      console.log('Guest mode:', isGuestMode);
+      
+      const headers: HeadersInit = {};
+      if (isGuestMode) {
+        headers['x-guest-mode'] = 'true';
+      }
+      
+      console.log('Sending request to /api/upload/image...');
+      const response = await fetch('/api/upload/image', {
+        method: 'POST',
+        headers,
+        body: formData
+      });
+      
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Upload failed:', error);
+        throw new Error(error.error || 'Upload failed');
+      }
+      
+      const data = await response.json();
+      console.log('Upload response:', {
+        filename: data.filename,
+        size: data.size,
+        type: data.type,
+        urlLength: data.url?.length || 0
+      });
+      
+      // Add image to canvas center (使用與便利貼相同的座標計算方式)
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        // 計算畫布中心點（相對於畫布本身的座標）
+        const canvasCenterX = rect.width / 2;
+        const canvasCenterY = rect.height / 2;
+        
+        // 轉換為邏輯座標（考慮縮放和平移）
+        const logicalX = (canvasCenterX - panOffset.x) / zoomLevel;
+        const logicalY = (canvasCenterY - panOffset.y) / zoomLevel;
+        
+        console.log('Canvas size:', { width: rect.width, height: rect.height });
+        console.log('Canvas center (canvas coords):', { x: canvasCenterX, y: canvasCenterY });
+        console.log('Zoom level:', zoomLevel, 'Pan offset:', panOffset);
+        console.log('Adding image at logical position:', { x: logicalX, y: logicalY });
+        
+        // 圖片放置在中心點，調整偏移讓圖片中心對齊
+        addImage(data.url, logicalX - 150, logicalY - 100, data.filename);
+      }
+      
+      setAiResult(`✅ 圖片已成功上傳`);
+    } catch (error) {
+      console.error('Image upload error:', error);
+      setAiResult(`❌ 圖片上傳失敗: ${error.message}`);
+    }
+  }, [addImage, viewportToLogical]);
+
+  // Handle drag and drop for images
+  const handleFileDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    
+    if (imageFiles.length > 0) {
+      imageFiles.forEach(file => handleImageUpload(file));
+    }
+  }, [handleImageUpload]);
 
   // 處理群組拖曳的全域滑鼠事件
   useEffect(() => {
@@ -1157,26 +1404,39 @@ const Whiteboard: React.FC = () => {
       longPressTimer.current = null;
     }
     
-    // 處理連接模式：如果正在連接且懸停在目標便利貼上，完成連接
-    if (connectingFrom && hoveredNote && connectingFrom !== hoveredNote) {
-      addEdge(connectingFrom, hoveredNote);
-      setConnectingFrom(null);
-      setHoveredNote(null);
-      return;
+    // 處理連接模式：如果正在連接且懸停在目標上，完成連接
+    if (connectingFrom) {
+      // 連接到便利貼
+      if (hoveredNote && connectingFrom !== hoveredNote) {
+        addEdge(connectingFrom, hoveredNote);
+        setConnectingFrom(null);
+        setHoveredNote(null);
+        return;
+      }
+      // 連接到圖片
+      if (hoveredImage && connectingFrom !== hoveredImage) {
+        addEdge(connectingFrom, hoveredImage);
+        setConnectingFrom(null);
+        setHoveredImage(null);
+        return;
+      }
     }
     
     // 如果正在連接但沒有有效目標，在滑鼠位置創建新便利貼並連接
-    if (connectingFrom && !hoveredNote) {
-      // 取得起始便利貼
+    if (connectingFrom && !hoveredNote && !hoveredImage) {
+      // 取得起始元素（便利貼或圖片）
       const fromNote = whiteboardData.notes.find(note => note.id === connectingFrom);
-      if (!fromNote) {
+      const fromImage = whiteboardData.images?.find(img => img.id === connectingFrom);
+      const fromElement = fromNote || fromImage;
+      
+      if (!fromElement) {
         setConnectingFrom(null);
         return;
       }
       
-      // 計算起始便利貼的中心點
-      const fromX = fromNote.x + fromNote.width / 2;
-      const fromY = fromNote.y + fromNote.height / 2;
+      // 計算起始元素的中心點
+      const fromX = fromElement.x + fromElement.width / 2;
+      const fromY = fromElement.y + fromElement.height / 2;
       
       // 計算角度（從起始便利貼指向滑鼠位置）
       const angle = Math.atan2(mousePosition.y - fromY, mousePosition.x - fromX);
@@ -1190,11 +1450,10 @@ const Whiteboard: React.FC = () => {
       const arrowSize = 16; // 箭頭大小
       const arrowOffset = 8; // 箭頭往前的偏移量
       
-      // 計算到新便利貼邊緣的距離（反向角度）
+      // 計算到新便利貼邊緣的距離
       const getDistanceToEdge = (width: number, height: number, angleToEdge: number) => {
         const halfWidth = width / 2;
         const halfHeight = height / 2;
-        const absAngle = Math.abs(angleToEdge);
         
         // 根據角度判斷與哪個邊相交
         if (Math.abs(Math.cos(angleToEdge)) > Math.abs(Math.sin(angleToEdge))) {
@@ -1204,20 +1463,16 @@ const Whiteboard: React.FC = () => {
         }
       };
       
-      // 計算新便利貼需要與箭頭尖端的距離
-      // 箭頭尖端位置 = mousePosition + arrowOffset
-      // 新便利貼邊緣需要在箭頭尖端往回 (gap + edgeDistance) 的位置
-      const reverseAngle = angle + Math.PI; // 反向角度（從滑鼠指向便利貼）
-      const toEdgeDistance = getDistanceToEdge(newNoteWidth, newNoteHeight, reverseAngle);
-      
-      // 計算箭頭尖端位置（與預覽線條一致）
+      // 預覽線條中，箭頭尖端的位置
       const arrowTipX = mousePosition.x + Math.cos(angle) * arrowOffset;
       const arrowTipY = mousePosition.y + Math.sin(angle) * arrowOffset;
       
-      // 從箭頭尖端往回計算新便利貼的中心位置
-      const totalDistance = toEdgeDistance + gap + arrowOffset;
-      const newNoteCenterX = arrowTipX - Math.cos(angle) * (toEdgeDistance + gap);
-      const newNoteCenterY = arrowTipY - Math.sin(angle) * (toEdgeDistance + gap);
+      // 計算新便利貼應該放置的中心位置
+      // 新便利貼的中心 = 箭頭尖端 + (邊緣距離 + gap)
+      // 使用正向角度，讓箭頭指向的邊緣（內側）對齊
+      const toEdgeDistance = getDistanceToEdge(newNoteWidth, newNoteHeight, angle);
+      const newNoteCenterX = arrowTipX + Math.cos(angle) * (toEdgeDistance + gap);
+      const newNoteCenterY = arrowTipY + Math.sin(angle) * (toEdgeDistance + gap);
       
       // 計算新便利貼的左上角位置
       const newNoteX = newNoteCenterX - newNoteWidth / 2;
@@ -1417,7 +1672,21 @@ const Whiteboard: React.FC = () => {
         })
         .map(note => note.id);
       
+      // 找出範圍內的圖片
+      const selectedImageIds = (whiteboardData.images || [])
+        .filter(image => {
+          const imageLeft = image.x;
+          const imageRight = image.x + image.width;
+          const imageTop = image.y;
+          const imageBottom = image.y + image.height;
+          
+          // 檢查圖片是否與選取框重疊
+          return !(imageRight < minX || imageLeft > maxX || imageBottom < minY || imageTop > maxY);
+        })
+        .map(image => image.id);
+      
       setSelectedNotes(selectedNoteIds);
+      setSelectedImages(selectedImageIds);
       setIsSelecting(false);
       setPreviewSelectedNotes([]); // 清除預覽狀態
     };
@@ -1534,6 +1803,96 @@ const Whiteboard: React.FC = () => {
     }
   }, [whiteboardData.notes]);
 
+  // 快速連接：點擊連接點直接創建新便利貼
+  const handleQuickConnect = useCallback((noteId: string, direction: 'top' | 'right' | 'bottom' | 'left') => {
+    const fromNote = whiteboardData.notes.find(note => note.id === noteId);
+    if (!fromNote) return;
+    
+    // 計算起始便利貼的中心點
+    const fromX = fromNote.x + fromNote.width / 2;
+    const fromY = fromNote.y + fromNote.height / 2;
+    
+    // 根據方向計算角度
+    let angle = 0;
+    switch (direction) {
+      case 'top':
+        angle = -Math.PI / 2; // 向上
+        break;
+      case 'right':
+        angle = 0; // 向右
+        break;
+      case 'bottom':
+        angle = Math.PI / 2; // 向下
+        break;
+      case 'left':
+        angle = Math.PI; // 向左
+        break;
+    }
+    
+    // 新便利貼的尺寸
+    const newNoteWidth = 200;
+    const newNoteHeight = 200;
+    
+    // 計算距離參數
+    const gap = 15; // 與 Edge 組件中的 gap 保持一致
+    const defaultDistance = 250; // 預設延伸距離
+    
+    // 計算到便利貼邊緣的距離
+    const getDistanceToEdge = (width: number, height: number, angleToEdge: number) => {
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
+      
+      if (Math.abs(Math.cos(angleToEdge)) > Math.abs(Math.sin(angleToEdge))) {
+        return halfWidth / Math.abs(Math.cos(angleToEdge));
+      } else {
+        return halfHeight / Math.abs(Math.sin(angleToEdge));
+      }
+    };
+    
+    // 計算起始便利貼邊緣距離
+    const fromEdgeDistance = getDistanceToEdge(fromNote.width, fromNote.height, angle);
+    
+    // 計算新便利貼邊緣距離
+    const toEdgeDistance = getDistanceToEdge(newNoteWidth, newNoteHeight, angle);
+    
+    // 計算新便利貼的中心位置
+    // 總距離 = 起始邊緣 + gap + 預設距離 + gap + 新便利貼邊緣
+    const totalDistance = fromEdgeDistance + gap + defaultDistance + gap + toEdgeDistance;
+    const newNoteCenterX = fromX + Math.cos(angle) * totalDistance;
+    const newNoteCenterY = fromY + Math.sin(angle) * totalDistance;
+    
+    // 計算新便利貼的左上角位置
+    const newNoteX = newNoteCenterX - newNoteWidth / 2;
+    const newNoteY = newNoteCenterY - newNoteHeight / 2;
+    
+    const newNoteId = `note_${Date.now()}`;
+    const newNote: StickyNote = {
+      id: newNoteId,
+      x: newNoteX,
+      y: newNoteY,
+      width: newNoteWidth,
+      height: newNoteHeight,
+      content: '',
+      color: '#FEF3C7'
+    };
+    
+    // 保存歷史記錄
+    saveToHistory(whiteboardData);
+    
+    // 更新白板數據
+    updateWhiteboardData(prev => ({
+      ...prev,
+      notes: [...prev.notes, newNote]
+    }));
+    
+    // 創建連接
+    addEdge(noteId, newNoteId);
+    
+    // 自動選中並進入編輯模式
+    setSelectedNote(newNoteId);
+    setAutoEditNoteId(newNoteId);
+    
+  }, [whiteboardData, saveToHistory, updateWhiteboardData, addEdge]);
 
   // 計算多選便利貼的邊界框
   const getMultiSelectionBounds = useCallback(() => {
@@ -3054,13 +3413,13 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
   // 清除畫布功能
 
   const handleClearCanvas = useCallback(() => {
-    if (whiteboardData.notes.length === 0 && whiteboardData.edges.length === 0) {
+    if (whiteboardData.notes.length === 0 && whiteboardData.edges.length === 0 && (!whiteboardData.images || whiteboardData.images.length === 0)) {
       return;
     }
 
-    const confirmClear = window.confirm('確定要清除所有便利貼和連線嗎？此操作無法復原。');
+    const confirmClear = window.confirm('確定要清除所有便利貼、連線和圖片嗎？此操作無法復原。');
     if (confirmClear) {
-      const emptyData = { notes: [], edges: [], groups: [] };
+      const emptyData = { notes: [], edges: [], groups: [], images: [] };
       setWhiteboardData(emptyData);
       setAiResult('');
       setSelectedNote(null);
@@ -3096,6 +3455,11 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         onMouseLeave={handleCanvasMouseUp}
         onContextMenu={handleCanvasRightClick}
         onDoubleClick={handleCanvasDoubleClick}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }}
+        onDrop={handleFileDrop}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -3161,10 +3525,13 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                 key={edge.id}
                 edge={edge}
                 notes={whiteboardData.notes}
+                images={whiteboardData.images || []}
                 isSelected={selectedEdge === edge.id}
                 onSelect={() => {
                   setSelectedEdge(edge.id);
                   setSelectedNote(null); // 清除便利貼選取
+                  setSelectedImage(null); // 清除圖片選取
+                  setSelectedImages([]);
                 }}
                 onDelete={() => {
                   console.log('Deleting edge from Whiteboard:', edge.id);
@@ -3175,20 +3542,30 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
 
             {/* 跟隨滑鼠的預覽連線 */}
             {connectingFrom && (() => {
+              // 查找起點（可能是便利貼或圖片）
               const fromNote = whiteboardData.notes.find(note => note.id === connectingFrom);
-              if (!fromNote) return null;
+              const fromImage = whiteboardData.images?.find(img => img.id === connectingFrom);
+              const fromElement = fromNote || fromImage;
+              
+              if (!fromElement) return null;
 
-              const fromX = fromNote.x + fromNote.width / 2;
-              const fromY = fromNote.y + fromNote.height / 2;
+              const fromX = fromElement.x + fromElement.width / 2;
+              const fromY = fromElement.y + fromElement.height / 2;
               let toX = mousePosition.x;
               let toY = mousePosition.y;
 
-              // 如果懸停在目標便利貼上，連到便利貼中心
+              // 如果懸停在目標上（便利貼或圖片），連到其中心
               if (hoveredNote) {
                 const hoveredNoteData = whiteboardData.notes.find(note => note.id === hoveredNote);
                 if (hoveredNoteData) {
                   toX = hoveredNoteData.x + hoveredNoteData.width / 2;
                   toY = hoveredNoteData.y + hoveredNoteData.height / 2;
+                }
+              } else if (hoveredImage) {
+                const hoveredImageData = whiteboardData.images?.find(img => img.id === hoveredImage);
+                if (hoveredImageData) {
+                  toX = hoveredImageData.x + hoveredImageData.width / 2;
+                  toY = hoveredImageData.y + hoveredImageData.height / 2;
                 }
               }
 
@@ -3209,7 +3586,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
               
               // 調整起點位置，留出間距（與實際線條一致）
               const gap = 15;
-              const fromDistance = getDistanceToEdge(fromNote.width, fromNote.height, angle) + gap;
+              const fromDistance = getDistanceToEdge(fromElement.width, fromElement.height, angle) + gap;
               const adjustedFromX = fromX + Math.cos(angle) * fromDistance;
               const adjustedFromY = fromY + Math.sin(angle) * fromDistance;
               
@@ -3221,6 +3598,13 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                 const hoveredNoteData = whiteboardData.notes.find(note => note.id === hoveredNote);
                 if (hoveredNoteData) {
                   const toDistance = getDistanceToEdge(hoveredNoteData.width, hoveredNoteData.height, angle) + gap;
+                  adjustedToX = toX - Math.cos(angle) * toDistance;
+                  adjustedToY = toY - Math.sin(angle) * toDistance;
+                }
+              } else if (hoveredImage) {
+                const hoveredImageData = whiteboardData.images?.find(img => img.id === hoveredImage);
+                if (hoveredImageData) {
+                  const toDistance = getDistanceToEdge(hoveredImageData.width, hoveredImageData.height, angle) + gap;
                   adjustedToX = toX - Math.cos(angle) * toDistance;
                   adjustedToY = toY - Math.sin(angle) * toDistance;
                 }
@@ -3307,9 +3691,14 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                   onStartDrag={(e) => {
                     // 初始化群組拖曳狀態
                     const groupNotes = getGroupNotes(group.id);
+                    const groupImages = whiteboardData.images?.filter(img => img.groupId === group.id) || [];
                     const positions: {[key: string]: {x: number, y: number}} = {};
+                    
                     groupNotes.forEach(note => {
                       positions[note.id] = { x: note.x, y: note.y };
+                    });
+                    groupImages.forEach(img => {
+                      positions[img.id] = { x: img.x, y: img.y };
                     });
                     
                     setGroupDragState({
@@ -3323,7 +3712,9 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                     // 選中群組
                     setSelectedGroup(group.id);
                     setSelectedNote(null);
+                    setSelectedImage(null);
                     setSelectedNotes(group.noteIds);
+                    setSelectedImages(group.imageIds || []);
                   }}
                 />
               );
@@ -3442,6 +3833,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
               onAIBrainstorm={() => handleAIBrainstorm(note.id)}
               onAskAI={() => handleAskAI(note.id)}
               onStartConnection={() => handleStartConnection(note.id)}
+              onQuickConnect={(direction) => handleQuickConnect(note.id, direction)}
               isAILoading={aiLoadingStates.brainstorm && aiLoadingStates.targetNoteId === note.id}
               onBatchColorChange={handleBatchColorChange}
               onBatchCopy={handleBatchCopy}
@@ -3472,6 +3864,60 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                 setIsDraggingNote(false);
                 setAlignmentGuides([]);
               }}
+            />
+          ))}
+
+          {/* 圖片 */}
+          {console.log('Rendering images:', whiteboardData.images?.length || 0, whiteboardData.images)}
+          {(whiteboardData.images || []).map(image => (
+            <ImageElementComponent
+              key={image.id}
+              image={image}
+              isSelected={selectedImage === image.id || selectedImages.includes(image.id)}
+              isSingleSelected={selectedImage === image.id && selectedImages.length === 0}
+              isMultiSelected={selectedImages.length > 0}
+              isPreviewSelected={false} // TODO: 加入圖片的預覽選取
+              isConnecting={connectingFrom === image.id}
+              isConnectTarget={connectingFrom !== null && connectingFrom !== image.id}
+              isHoveredForConnection={connectingFrom !== null && connectingFrom !== image.id && hoveredImage === image.id}
+              zoomLevel={zoomLevel}
+              panOffset={panOffset}
+              viewportToLogical={viewportToLogical}
+              onSelect={() => {
+                // 如果當前圖片已經在多選狀態中，不要清除多選
+                if (selectedImages.includes(image.id)) {
+                  return;
+                }
+                
+                // 否則進行正常選取
+                setSelectedImage(image.id);
+                setSelectedImages([]);
+                setSelectedNote(null);
+                setSelectedNotes([]);
+                setSelectedEdge(null);
+              }}
+              onUpdatePosition={(x, y) => updateImagePosition(image.id, x, y)}
+              onUpdateSize={(width, height) => updateImageSize(image.id, width, height)}
+              onDelete={() => deleteImage(image.id)}
+              onStartConnection={() => {
+                setConnectingFrom(image.id);
+                setHoveredNote(null);
+                setHoveredImage(null);
+              }}
+              onCreateGroup={() => {
+                if (selectedImages.length >= 2 || (selectedImages.length + selectedNotes.length >= 2)) {
+                  createGroup(selectedNotes, selectedImages);
+                }
+              }}
+              onUngroupImages={() => {
+                if (image.groupId) {
+                  ungroupNotes(image.groupId);
+                }
+              }}
+              onMouseEnter={() => setHoveredImage(image.id)}
+              onMouseLeave={() => setHoveredImage(null)}
+              onStartDrag={() => setIsDraggingNote(true)}
+              onEndDrag={() => setIsDraggingNote(false)}
             />
           ))}
         </div>
@@ -3571,7 +4017,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
               setHistory([projectData]);
               setHistoryIndex(0);
             } else {
-              const emptyData = { notes: [], edges: [], groups: [] };
+              const emptyData = { notes: [], edges: [], groups: [], images: [] };
               setWhiteboardData(emptyData);
               setHistory([emptyData]);
               setHistoryIndex(0);
@@ -3615,14 +4061,14 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
               if (projectData) {
                 setWhiteboardData(projectData);
               } else {
-                setWhiteboardData({ notes: [], edges: [], groups: [] });
+                setWhiteboardData({ notes: [], edges: [], groups: [], images: [] });
               }
             } else {
               // 沒有專案了，創建預設專案
               ProjectService.createProject('我的白板', '預設專案').then(defaultProject => {
                 setCurrentProjectId(defaultProject.id);
                 setCurrentProject(defaultProject);
-                setWhiteboardData({ notes: [], edges: [], groups: [] });
+                setWhiteboardData({ notes: [], edges: [], groups: [], images: [] });
               });
             }
           }
@@ -3643,6 +4089,7 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         canRedo={historyIndex < history.length - 1}
         selectedCount={selectedNotes.length}
         aiLoadingStates={aiLoadingStates}
+        onImageUpload={handleImageUpload}
         onExport={async (format) => {
           try {
             if (format === 'json') {
