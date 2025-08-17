@@ -1235,7 +1235,7 @@ const Whiteboard: React.FC = () => {
       
       // 頁面卸載時結束會話
       const handleBeforeUnload = () => {
-        RealAnalyticsService.endSession();
+        RealAnalyticsService.endSession('dummy-session-id');
         
         // 舊的追蹤（保留）
         const sessionDuration = (new Date().getTime() - sessionStartTime.current.getTime()) / 1000 / 60;
@@ -1250,7 +1250,7 @@ const Whiteboard: React.FC = () => {
       
       return () => {
         window.removeEventListener('beforeunload', handleBeforeUnload);
-        RealAnalyticsService.endSession();
+        RealAnalyticsService.endSession('dummy-session-id');
       };
     }
   }, [user?.id, trackEvent]);
@@ -1604,9 +1604,7 @@ const Whiteboard: React.FC = () => {
       RealAnalyticsService.trackNoteCreated(
         user.id,
         sessionId,
-        newNote.id,
-        { x, y },
-        whiteboardData.notes.length + 1
+        newNote.id
       );
     }
     
@@ -5114,32 +5112,6 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
               strokeLinejoin="round" 
               strokeWidth={2} 
               d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" 
-            />
-          </svg>
-        </button>
-        
-        {/* 重置視圖按鈕 */}
-        <button
-          onClick={() => {
-            setZoomLevel(1);
-            setPanOffset({ x: 0, y: 0 });
-          }}
-          className={`rounded-full p-3 shadow-lg hover:shadow-xl transition-all group ${
-            isDarkMode ? 'bg-dark-bg-secondary hover:bg-dark-bg-tertiary' : 'bg-white hover:bg-gray-50'
-          }`}
-          title="重置視圖 (Reset)"
-        >
-          <svg 
-            className="w-5 h-5 text-gray-600 group-hover:text-gray-800 transition-colors" 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
             />
           </svg>
         </button>

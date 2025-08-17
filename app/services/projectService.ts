@@ -95,6 +95,26 @@ export class ProjectService {
     }
   }
 
+  // 保存單個專案到本地（用於快取雲端資料）
+  static saveProjectLocally(project: Project): void {
+    if (!isBrowser()) return;
+    
+    try {
+      const projects = this.getAllProjects();
+      const existingIndex = projects.findIndex(p => p.id === project.id);
+      
+      if (existingIndex >= 0) {
+        projects[existingIndex] = project;
+      } else {
+        projects.push(project);
+      }
+      
+      localStorage.setItem(this.getProjectsKey(), JSON.stringify(projects));
+    } catch (error) {
+      console.error('Failed to save project locally:', error);
+    }
+  }
+
   // 創建新專案
   static async createProject(name: string, description?: string, syncToCloud: boolean = true): Promise<Project> {
     const newProject: Project = {

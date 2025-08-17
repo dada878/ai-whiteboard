@@ -36,7 +36,29 @@ export default function ProjectDialog({
   const loadProjects = async () => {
     setLoading(true);
     try {
-      // 從本地載入專案
+      // 優先從雲端載入專案
+      if (user?.id) {
+        const response = await fetch('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'list' })
+        });
+        
+        if (response.ok) {
+          const cloudProjects = await response.json();
+          if (cloudProjects && cloudProjects.projects) {
+            setProjects(cloudProjects.projects);
+            // 同步到本地作為快取
+            cloudProjects.projects.forEach((project: Project) => {
+              ProjectService.saveProjectLocally(project);
+            });
+            setLoading(false);
+            return;
+          }
+        }
+      }
+      
+      // 如果雲端載入失敗，使用本地資料
       const localProjects = ProjectService.getAllProjects();
       setProjects(localProjects);
     } catch (error) {
@@ -56,6 +78,24 @@ export default function ProjectDialog({
       // 在本地創建專案
       const newProject: Project = await ProjectService.createProject(newProjectName, newProjectDescription);
 
+      // 同步到雲端
+      if (user?.id) {
+        await fetch('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'save',
+            projectId: newProject.id,
+            projectMetadata: {
+              name: newProject.name,
+              description: newProject.description,
+              createdAt: newProject.createdAt,
+              updatedAt: newProject.updatedAt
+            }
+          })
+        });
+      }
+
       setProjects([...projects, newProject]);
       setShowNewProjectForm(false);
       setNewProjectName('');
@@ -70,6 +110,18 @@ export default function ProjectDialog({
     if (!confirm('確定要刪除這個專案嗎？此操作無法復原。')) return;
 
     try {
+      // 從雲端刪除專案
+      if (user?.id) {
+        await fetch('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'delete',
+            projectId
+          })
+        });
+      }
+      
       // 計算刪除後的專案列表
       const remainingProjects = projects.filter(p => p.id !== projectId);
       
