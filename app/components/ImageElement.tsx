@@ -302,7 +302,7 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
       >
           {/* Image */}
           <div 
-            className={`w-full h-full rounded-lg overflow-hidden transition-all ${
+            className={`w-full h-full rounded-lg overflow-hidden shadow-lg transition-all ${
               dragState?.isDragging
                 ? 'cursor-grabbing border-2 border-blue-500 opacity-80'
                 : isConnecting 

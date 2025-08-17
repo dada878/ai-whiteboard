@@ -1842,7 +1842,7 @@ const Whiteboard: React.FC = () => {
     
     // 計算距離參數
     const gap = 15; // 與 Edge 組件中的 gap 保持一致
-    const defaultDistance = 250; // 預設延伸距離
+    const defaultDistance = 180; // 預設延伸距離（較短的距離）
     
     // 計算到便利貼邊緣的距離
     const getDistanceToEdge = (width: number, height: number, angleToEdge: number) => {
@@ -3823,6 +3823,8 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                 // 否則進行正常選取
                 setSelectedNote(note.id);
                 setSelectedNotes([]); // 清除多選
+                setSelectedImage(null); // 清除圖片選取
+                setSelectedImages([]); // 清除圖片多選
                 setSelectedEdge(null); // 清除連線選取
                 // 清除自動編輯標記
                 if (autoEditNoteId === note.id) {
