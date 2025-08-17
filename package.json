@@ -7,7 +7,9 @@
     "build": "node scripts/update-version.js && next build",
     "start": "next start",
     "lint": "next lint",
-    "version:update": "node scripts/update-version.js"
+    "version:update": "node scripts/update-version.js",
+    "hooks:install": "node scripts/install-hooks.js",
+    "postinstall": "npm run hooks:install"
   },
   "dependencies": {
     "@auth/firebase-adapter": "^2.10.0",
