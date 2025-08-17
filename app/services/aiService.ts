@@ -20,7 +20,7 @@ export class AIService {
     }
 
     try {
-      
+      // 直接使用硬編碼的 prompt（因為 PromptService 不能在客戶端使用）
       const systemPrompt = `你是專業的創意發想專家，擅長產生高品質、實用的想法。
 
 核心能力：

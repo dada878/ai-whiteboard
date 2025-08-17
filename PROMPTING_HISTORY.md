@@ -2,6 +2,57 @@
 
 ## 2025-08-17
 
+### 升級 AI Agent 到 GPT-4o 模型
+
+**使用者需求**：
+將 AI Agent 從 GPT-3.5-turbo 升級到 GPT-4o 以獲得更好的性能。
+
+**升級內容**：
+1. **模型升級**：
+   - `stream-natural/route.ts` 中的模型從 `gpt-3.5-turbo` 改為 `gpt-4o`
+   - GPT-4o 支援 128K context window
+
+2. **Token 限制放寬**：
+   - `truncateMessages` 的 maxTokens 從 10000 提升到 50000
+   - 不再需要激進的訊息截斷策略
+   - 保留更完整的對話歷史和工具調用結果
+
+3. **優勢**：
+   - 更強的推理能力
+   - 更好的工具使用決策
+   - 更長的上下文記憶
+   - 更準確的回答品質
+
+### 統一 AI Agent MAX_TOOL_CALLS 設定
+
+**使用者需求**：
+統一所有 AI Agent 路由的 MAX_TOOL_CALLS 設定為 20。
+
+**解決方案**：
+將以下檔案的 MAX_TOOL_CALLS 從 5 改為 20：
+- `/app/api/ai-agent/stream-multi/route.ts`
+- `/app/api/ai-agent/stream-reflection/route.ts`
+- `/app/api/ai-agent/stream-intent/route.ts`
+
+保持 `/app/api/ai-agent/stream-natural/route.ts` 的設定為 20。
+
+### 修復 AI Agent 停止邏輯問題
+
+**使用者需求**：
+修復 AI Agent 明明在反思中說需要繼續探索，但卻停止執行的問題。
+
+**問題分析**：
+1. AI 在反思後說需要繼續，但下一輪循環時 GPT 沒有生成 tool_calls
+2. 原邏輯會直接設定 `shouldContinue = false` 並停止
+
+**解決方案**：
+在 `stream-natural/route.ts` 中改進邏輯：
+- 當 AI 沒有調用工具時，檢查最近的反思內容
+- 如果反思包含「需要」「繼續」「探索」等關鍵字，添加明確指示讓 AI 繼續
+- 設定 `shouldContinue = true` 強制循環繼續
+
+## 2025-08-17
+
 ### 修復 AI Chat 面板樣式對比度問題
 
 **使用者需求**：

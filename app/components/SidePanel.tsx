@@ -41,14 +41,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [activeTab, setActiveTab] = useState<'projects' | 'ai'>('projects');
   
-  // AI 快速問題的全局狀態
-  const [quickQuestions, setQuickQuestions] = useState<string[]>([
-    '白板上有哪些內容？',
-    '有哪些群組？',
-    '找出所有待辦事項',
-    '分析白板結構'
-  ]);
-  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+  // AI 快速問題的全局狀態（預設為空，等待載入）
+  const [quickQuestions, setQuickQuestions] = useState<string[]>([]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false); // 預設為未載入，首次載入時才設為 true
   const generateQuestionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // 側邊欄寬度調整
@@ -59,8 +54,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
 
   // 生成動態快速問題（在背景載入）
   const generateQuickQuestions = async () => {
-    if (isLoadingQuestions || !whiteboardData) return;
+    if (!whiteboardData) return;
     
+    // 不檢查 isLoadingQuestions，允許重新載入
     setIsLoadingQuestions(true);
     try {
       const response = await fetch('/api/ai-agent/generate-questions', {
@@ -76,10 +72,24 @@ const SidePanel: React.FC<SidePanelProps> = ({
         if (data.questions && Array.isArray(data.questions)) {
           setQuickQuestions(data.questions);
         }
+      } else {
+        // API 失敗時提供備用問題
+        setQuickQuestions([
+          '分析白板結構',
+          '總結主要內容',
+          '找出關鍵重點',
+          '探索內容關聯'
+        ]);
       }
     } catch (error) {
       console.error('Error generating questions:', error);
-      // 保持預設問題
+      // 錯誤時提供備用問題
+      setQuickQuestions([
+        '分析白板結構',
+        '總結主要內容',
+        '找出關鍵重點',
+        '探索內容關聯'
+      ]);
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -92,10 +102,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
       clearTimeout(generateQuestionTimeoutRef.current);
     }
     
-    // 設置新的 timeout（10秒防抖）
+    // 設置新的 timeout（2秒防抖）
     generateQuestionTimeoutRef.current = setTimeout(() => {
       generateQuickQuestions();
-    }, 10000);
+    }, 2000);
   };
 
   // 載入專案列表
@@ -120,8 +130,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
   useEffect(() => {
     if (!whiteboardData) return;
     
-    // 首次載入時立即生成問題
-    if (whiteboardData.notes?.length === 0 && whiteboardData.groups?.length === 0) {
+    // 首次載入時立即生成問題（無防抖）
+    if (quickQuestions.length === 0 && !isLoadingQuestions) {
       generateQuickQuestions();
       return;
     }

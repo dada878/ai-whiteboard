@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import OpenAI from 'openai';
 import { WhiteboardData } from '@/app/types';
 import { aiAgentTools } from '../tools';
+import { promptService } from '@/app/services/promptService';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 
 const openai = new OpenAI({
@@ -12,121 +13,139 @@ const openai = new OpenAI({
 const MAX_TOOL_CALLS = 20;
 
 // Token 估算和管理
+// 更準確的 token 估算（考慮中文字符通常佔用更多 tokens）
 function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  // 簡單估算：英文約 4 字符 = 1 token，中文約 2 字符 = 1 token
+  const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const englishChars = text.length - chineseChars;
+  return Math.ceil(chineseChars / 2 + englishChars / 4);
 }
 
-function truncateMessages(messages: any[], maxTokens: number = 12000) {
+// GPT-4o 支援 128K context，我們可以大幅增加限制
+function truncateMessages(messages: any[], maxTokens: number = 50000) {
   let totalTokens = 0;
   const result = [];
   
-  // 從最後往前處理，保持最新的對話
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
+  // 保留系統訊息
+  const systemMessages = messages.filter(m => m.role === 'system');
+  for (const msg of systemMessages) {
     const msgTokens = estimateTokens(JSON.stringify(msg));
-    
-    if (totalTokens + msgTokens > maxTokens && result.length > 0) {
-      break; // 超出限制且已有內容，停止添加
+    if (totalTokens + msgTokens < maxTokens * 0.2) { // 系統訊息最多佔 20%
+      result.push(msg);
+      totalTokens += msgTokens;
     }
-    
-    result.unshift(msg);
+  }
+  
+  // 確保保留最後的用戶訊息
+  const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+  if (lastUserMessage) {
+    const msgTokens = estimateTokens(JSON.stringify(lastUserMessage));
+    result.push(lastUserMessage);
     totalTokens += msgTokens;
   }
   
-  return result;
+  // 收集 tool call 和 tool response 的配對
+  const toolPairs: Map<string, { call: any, response: any }> = new Map();
+  
+  for (const msg of messages) {
+    if (msg.tool_calls) {
+      // 這是一個包含 tool_calls 的 assistant 訊息
+      for (const toolCall of msg.tool_calls) {
+        toolPairs.set(toolCall.id, { call: msg, response: null });
+      }
+    } else if (msg.role === 'tool' && msg.tool_call_id) {
+      // 這是一個 tool response
+      const pair = toolPairs.get(msg.tool_call_id);
+      if (pair) {
+        pair.response = msg;
+      }
+    }
+  }
+  
+  // 從後往前添加訊息，保持 tool call/response 配對
+  const processedIds = new Set();
+  
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    
+    // 跳過已處理的訊息
+    if (result.includes(msg) || processedIds.has(i)) continue;
+    
+    // 如果是 tool response，必須確保對應的 tool call 也被包含
+    if (msg.role === 'tool' && msg.tool_call_id) {
+      const pair = Array.from(toolPairs.values()).find(p => p.response === msg);
+      if (pair && pair.call) {
+        const callIndex = messages.indexOf(pair.call);
+        const callTokens = estimateTokens(JSON.stringify(pair.call));
+        const responseTokens = estimateTokens(JSON.stringify(msg));
+        
+        if (totalTokens + callTokens + responseTokens < maxTokens) {
+          // 添加配對（保持順序）
+          if (!result.includes(pair.call)) {
+            result.push(pair.call);
+            processedIds.add(callIndex);
+            totalTokens += callTokens;
+          }
+          result.push(msg);
+          processedIds.add(i);
+          totalTokens += responseTokens;
+        }
+      }
+      continue;
+    }
+    
+    // 如果是包含 tool_calls 的訊息，檢查是否有對應的 response
+    if (msg.tool_calls) {
+      const responses = [];
+      let pairTokens = estimateTokens(JSON.stringify(msg));
+      
+      for (const toolCall of msg.tool_calls) {
+        const pair = toolPairs.get(toolCall.id);
+        if (pair && pair.response) {
+          responses.push(pair.response);
+          pairTokens += estimateTokens(JSON.stringify(pair.response));
+        }
+      }
+      
+      if (totalTokens + pairTokens < maxTokens) {
+        result.push(msg);
+        processedIds.add(i);
+        totalTokens += estimateTokens(JSON.stringify(msg));
+        
+        for (const response of responses) {
+          const responseIndex = messages.indexOf(response);
+          if (!result.includes(response)) {
+            result.push(response);
+            processedIds.add(responseIndex);
+            totalTokens += estimateTokens(JSON.stringify(response));
+          }
+        }
+      }
+      continue;
+    }
+    
+    // 其他類型的訊息
+    const msgTokens = estimateTokens(JSON.stringify(msg));
+    if (totalTokens + msgTokens < maxTokens) {
+      result.push(msg);
+      processedIds.add(i);
+      totalTokens += msgTokens;
+    } else {
+      break;
+    }
+  }
+  
+  // 按原始順序排序
+  return result.sort((a, b) => {
+    const aIndex = messages.indexOf(a);
+    const bIndex = messages.indexOf(b);
+    return aIndex - bIndex;
+  });
 }
 
-// 自然語言意圖分析提示詞
-const NATURAL_INTENT_PROMPT = `你是一個善於理解人類意圖的助手。請用自然的思考方式分析使用者的問題，判斷問題類型，並決定搜尋策略。
-
-使用者的問題：{user_question}
-
-請以自然語言思考並回答以下問題：
-1. 使用者說了什麼？(重述問題)
-2. 這是什麼類型的問題？
-   - 查詢類：需要找出白板上的具體內容
-   - 建議類：需要我基於理解提供建議和創意
-   - 分析類：需要我分析和歸納白板內容
-   - 混合類：先查詢再分析或建議
-3. 結合前面的對話，他真正想要什麼？(理解深層需求)
-4. 我需要搜尋嗎？如果需要，搜尋什麼？
-   - 如果是建議類：不要搜尋「建議」「如何」這種詞，而是搜尋相關主題
-   - 如果是查詢類：發散性搜尋多個關鍵字
-5. 我應該如何回答？(制定策略)
-
-🔍 **發散性搜尋思考**：
-- 不要只搜尋字面意思，要想想相關概念
-- 考慮同義詞、相關詞、上下位詞
-- 思考使用者可能用不同方式表達同一件事
-- 從多個角度同時搜尋，增加命中機會
-- **重要**：參考前面的對話來理解當前問題的完整語境
-
-💬 **對話脈絡思考**：
-- 使用者是否在追問更多細節？
-- 是否在延續之前討論的主題？
-- 是否在比較或對比之前提到的內容？
-- 當前問題和之前問題的關聯性如何？
-
-請用第一人稱「我覺得...」「我認為...」「我應該...」的方式回答，就像在和朋友對話一樣自然。`;
-
-// 主系統提示詞
-const SYSTEM_PROMPT = `你是一個智能白板助手。你的工作是幫助使用者查詢、分析白板內容，並提供智慧建議。
-
-核心原則：
-1. **先了解白板內容，再理解使用者需求**
-2. **判斷問題類型：查詢類 vs 思考類**
-3. **查詢類問題才需要搜尋，思考類問題要發揮創意**
-4. **🔗 重要：善用圖探索，從節點出發探索相鄰內容**
-5. **持續檢查是否回答了原始問題**
-
-🧠 **問題類型判斷**：
-- **查詢類**：「有哪些...」「找出...」「列出...」→ 需要搜尋
-- **思考類**：「建議...」「如何改進...」「分析...」→ 基於理解思考，不要搜尋「建議」這種詞
-- **混合類**：先查詢相關內容，再基於內容提供建議
-
-🔍 **搜尋策略指引（僅用於查詢類）**：
-- **發散性思考**：一次搜尋要嘗試多個可能的關鍵字組合
-- **多角度搜尋**：從不同角度理解使用者意圖（字面意思、相關概念、同義詞）
-- **策略性搜尋**：使用廣義關鍵字 + 具體關鍵字的組合
-- **避免死板**：不要只搜尋字面上的詞，要思考相關的概念
-
-🔗 **圖探索策略（重要邏輯）**：
-- **步驟 1**：使用 search_notes 找到相關便利貼
-- **步驟 2**：對找到的便利貼使用 get_note_by_id，獲取其連接關係（incoming/outgoing connections）
-- **步驟 3 關鍵**：對**連接關係中的其他便利貼 ID** 使用 get_note_by_id 來探索相鄰節點
-- **避免錯誤**：不要重複對同一個便利貼使用 get_note_by_id，要對它連接的其他便利貼使用
-- **探索邏輯**：connections.incoming 和 connections.outgoing 中的 noteId 才是你應該探索的目標
-
-**正確的圖探索範例流程**：
-第一步：search_notes 找到便利貼 note_123
-第二步：get_note_by_id 獲得 note_123 的連接關係 (connections.outgoing 和 connections.incoming)
-第三步：對相鄰節點探索 - 對 connections 中的其他 noteId 使用 get_note_by_id
-錯誤做法：重複對 note_123 使用 get_note_by_id
-
-**重點**：connections 欄位中的 noteId 是你應該探索的目標，不是重複探索同一個便利貼
-
-搜尋範例：
-- 使用者問「TA是誰」→ 搜尋：["TA", "目標", "使用者", "客戶", "對象"]
-- 使用者問「付費模式」→ 搜尋：["付費", "收費", "價格", "訂閱", "商業模式"]
-- 使用者問「功能」→ 搜尋：["功能", "特色", "能力", "服務", "功能點"]
-
-工作流程：
-1. 提供白板整體摘要
-2. 自然語言分析使用者意圖 + 判斷問題類型
-3. 根據問題類型決定策略：
-   - 查詢類：執行搜尋和圖探索
-   - 建議類：基於摘要直接思考，提供創意建議
-   - 分析類：基於理解進行深度分析
-   - 混合類：先查詢再思考
-4. 反思是否已充分回答問題
-5. 生成最終答案
-
-💡 **重要提醒**：
-- 不是所有問題都需要搜尋白板
-- 建議類問題要發揮創意，不要機械搜尋
-- 可以基於對白板的整體理解直接回答
-
-保持友善、專業，使用繁體中文回應。`;
+// 注意：所有 prompts 已移至 /prompts 資料夾的 .md 檔案
+// 使用 PromptService 載入和管理
+// 詳見 /prompts/INDEX.md 了解所有 prompts 的位置和用途
 
 export async function POST(request: NextRequest) {
   try {
@@ -157,7 +176,7 @@ export async function POST(request: NextRequest) {
           ));
 
           // ============ 階段 2: 自然語言意圖分析 ============
-          // 直接執行意圖分析並發送完整結果
+          // 使用 Markdown prompt 系統
           const { analysis: naturalIntentAnalysis, prompt: intentPrompt } = await analyzeIntentNaturally(
             message, 
             whiteboardSummary,
@@ -174,15 +193,12 @@ export async function POST(request: NextRequest) {
           ));
 
           // ============ 階段 3: 準備系統 prompt（但不顯示計劃） ============
-          const systemPromptWithContext = `${SYSTEM_PROMPT}
-
-白板內容摘要：
-${whiteboardSummary}
-
-意圖分析：
-${naturalIntentAnalysis}
-
-記住：你的目標是回答使用者的原始問題：「${message}」`;
+          // 使用 Markdown prompt
+          const systemPromptWithContext = await promptService.compilePrompt('agent/main.md', {
+            whiteboardSummary: whiteboardSummary,
+            intentAnalysis: naturalIntentAnalysis,
+            userMessage: message
+          });
 
           const messages: ChatCompletionMessageParam[] = [
             { 
@@ -203,12 +219,12 @@ ${naturalIntentAnalysis}
           const collectedInfo: any[] = [];
 
           while (shouldContinue && toolCallCount < MAX_TOOL_CALLS) {
-            // 智能截斷訊息以避免 context 過長
-            const truncatedMessages = truncateMessages(allMessages, 12000);
+            // 智能截斷訊息以避免 context 過長 (GPT-4o 可以處理更多)
+            const truncatedMessages = truncateMessages(allMessages, 50000);
             
             // 呼叫 OpenAI 決定下一步行動
             const completion = await openai.chat.completions.create({
-              model: 'gpt-3.5-turbo',
+              model: 'gpt-4o',  // 升級到 GPT-4o (128K context)
               messages: truncatedMessages,
               tools: aiAgentTools,
               tool_choice: 'auto',
@@ -301,7 +317,48 @@ ${naturalIntentAnalysis}
                 shouldContinue = false;
               }
             } else {
-              shouldContinue = false;
+              // AI 沒有調用工具，但可能是因為 prompt 不夠明確
+              // 如果上次的反思說需要繼續，我們應該給更明確的指示
+              if (toolCallCount > 0 && collectedInfo.length > 0) {
+                // 檢查最近的反思是否提到需要繼續
+                const lastMessages = allMessages.slice(-3); // 檢查最後幾條訊息
+                const hasRecentReflection = lastMessages.some(m => 
+                  m.role === 'assistant' && 
+                  typeof m.content === 'string' &&
+                  m.content.includes('反思：')
+                );
+                
+                if (hasRecentReflection) {
+                  // 找到最近的反思內容
+                  const recentReflection = lastMessages
+                    .filter(m => m.role === 'assistant' && typeof m.content === 'string')
+                    .map(m => m.content)
+                    .join(' ');
+                  
+                  // 檢查是否需要繼續
+                  const needsContinue = recentReflection.includes('需要') || 
+                                      recentReflection.includes('還要') || 
+                                      recentReflection.includes('繼續') ||
+                                      recentReflection.includes('再找') ||
+                                      recentReflection.includes('進一步') ||
+                                      recentReflection.includes('探索');
+                  
+                  if (needsContinue) {
+                    // 添加更明確的指示，強制 AI 使用工具
+                    allMessages.push({
+                      role: 'user' as const,
+                      content: '根據你的反思，你提到需要繼續探索。請使用適當的工具（search_notes 或 get_note_by_id）繼續搜尋或探索相關資訊。'
+                    });
+                    shouldContinue = true; // 繼續循環
+                  } else {
+                    shouldContinue = false; // 反思說不需要繼續
+                  }
+                } else {
+                  shouldContinue = false; // 沒有反思，停止
+                }
+              } else {
+                shouldContinue = false; // 第一次就沒工具調用，停止
+              }
             }
           }
 
@@ -318,10 +375,10 @@ ${naturalIntentAnalysis}
 如果資訊不完整，請誠實說明找到了什麼，還缺什麼。請用具體的例子和引用來支持你的答案。`
           });
 
-          // 生成最終回應（再次截斷以確保安全）
-          const finalMessages = truncateMessages(allMessages, 12000);
+          // 生成最終回應（GPT-4o 可以處理更多 context）
+          const finalMessages = truncateMessages(allMessages, 50000);
           const finalStream = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo',
+            model: 'gpt-4o',  // 升級到 GPT-4o
             messages: finalMessages,
             temperature: 0.7,
             stream: true,
@@ -401,7 +458,7 @@ async function generateComprehensiveOverview(whiteboardData: WhiteboardData): Pr
     const summaryPrompt = [
       {
         role: 'system',
-        content: '你是一個內容摘要專家，請為白板內容生成簡潔的摘要，限制在200字以內。'
+        content: '你是一個內容摘要專家，請為白板內容生成詳細且有洞察力的摘要，限制在500字以內。'
       },
       {
         role: 'user',
@@ -409,15 +466,15 @@ async function generateComprehensiveOverview(whiteboardData: WhiteboardData): Pr
 
 主要內容：${summaryData.notes.slice(0, 10).join('、')}${hasMoreNotes ? '...(還有更多)' : ''}
 統計：${summaryData.totalNotes}個便利貼、${summaryData.connections}個連接、${summaryData.groups}個群組
-請提取核心主題和關鍵概念，限制200字以內。`
+請提取核心主題和關鍵概念，限制500字以內。`
       }
     ];
 
     // 只進行簡潔的摘要生成，不做複雜的結構分析
     const summaryResponse = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o',  // 升級到 GPT-4o
       messages: summaryPrompt,
-      max_tokens: 200, // 限制回應長度
+      max_tokens: 500,  // GPT-4o 可以生成更詳細的摘要
       temperature: 0.5,
     });
 
@@ -432,7 +489,7 @@ async function generateComprehensiveOverview(whiteboardData: WhiteboardData): Pr
     return {
       summary,
       prompts: [
-        { type: '簡潔摘要', model: 'gpt-3.5-turbo', messages: summaryPrompt }
+        { type: '簡潔摘要', model: 'gpt-4o', messages: summaryPrompt }
       ]
     };
   } catch (error) {
@@ -505,7 +562,7 @@ ${contentSamples.map(c => `• ${c}`).join('\n')}
 這就是目前白板的整體情況。`;
 }
 
-// 自然語言意圖分析
+// 自然語言意圖分析（整合 Markdown prompt 系統）
 async function analyzeIntentNaturally(
   question: string,
   whiteboardSummary: string,
@@ -513,67 +570,61 @@ async function analyzeIntentNaturally(
   whiteboardData?: WhiteboardData
 ): Promise<{analysis: string, prompt: any}> {
   try {
-    // 準備對話上下文
-    const contextInfo = conversationHistory.length > 0 
-      ? `\n\n前面的對話內容：\n${conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n')}`
-      : '';
+    // 準備變數
+    const conversationHistoryText = conversationHistory.length > 0 
+      ? conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n')
+      : null;
 
-    // 準備簡化的白板狀態概要資訊（避免過度詳細）
-    let detailedWhiteboardInfo = whiteboardSummary;
-    
+    // 準備白板上下文
+    let whiteboardContext = whiteboardSummary;
     if (whiteboardData) {
-      // 只提供統計資訊和關鍵內容樣本，不列出所有詳細內容
-      const statsInfo = `\n\n📊 **白板統計**：
+      const statsInfo = `
 - 便利貼：${whiteboardData.notes?.length || 0} 個
 - 群組：${whiteboardData.groups?.length || 0} 個  
 - 連接：${whiteboardData.edges?.length || 0} 條
 - 圖片：${whiteboardData.images?.length || 0} 張`;
 
-      // 只顯示前幾個便利貼作為內容樣本
-      const sampleNotesInfo = whiteboardData.notes?.length > 0 
-        ? `\n\n📝 **內容樣本**（前5個便利貼）：\n${whiteboardData.notes.slice(0, 5).map((note, idx) => 
-            `${idx + 1}. "${note.content}"`
-          ).join('\n')}`
-        : '';
+      const sampleNotes = whiteboardData.notes?.slice(0, 5)
+        .map((note, idx) => `${idx + 1}. "${note.content}"`)
+        .join('\n');
 
-      // 只顯示主要群組名稱
-      const mainGroupsInfo = whiteboardData.groups?.length > 0 
-        ? `\n\n📁 **主要群組**：${whiteboardData.groups.slice(0, 5).map(g => g.name).join('、')}`
-        : '';
-      
-      detailedWhiteboardInfo = `${whiteboardSummary}${statsInfo}${sampleNotesInfo}${mainGroupsInfo}`;
+      const mainGroups = whiteboardData.groups?.slice(0, 5)
+        .map(g => g.name).join('、');
+
+      whiteboardContext = `${whiteboardSummary}\n\n📊 **白板統計**：${statsInfo}${
+        sampleNotes ? `\n\n📝 **內容樣本**：\n${sampleNotes}` : ''
+      }${
+        mainGroups ? `\n\n📁 **主要群組**：${mainGroups}` : ''
+      }`;
     }
 
-    // 準備完整的 prompt
+    // 使用 PromptService 載入並編譯 prompt
+    const compiledPrompt = await promptService.compilePrompt('agent/intent-analysis.md', {
+      userQuestion: question,
+      whiteboardContext: whiteboardContext,
+      conversationHistory: conversationHistoryText
+    });
+
     const intentMessages = [
       {
         role: 'system',
-        content: `你是一個善於理解人類意圖的助手。請用自然的第一人稱思考方式分析使用者的問題。
-
-白板詳細狀態：
-${detailedWhiteboardInfo}${contextInfo}
-
-🧠 **重要**：
-1. 你可以看到白板上所有便利貼的具體內容、群組資訊、連接關係等詳細資訊
-2. 如果有前面的對話，請參考對話上下文來理解當前問題的完整意圖
-3. 基於這些詳細資訊來精準理解使用者的真正需求
-4. 考慮使用者可能在延續之前的話題或提出相關問題`
+        content: '你是一個善於理解人類意圖的助手。請用自然的第一人稱思考方式分析使用者的問題。'
       },
       {
         role: 'user',
-        content: NATURAL_INTENT_PROMPT.replace('{user_question}', question)
+        content: compiledPrompt
       }
     ];
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o',  // 升級到 GPT-4o
       messages: intentMessages,
       temperature: 0.7
     });
 
     return {
       analysis: response.choices[0].message.content || '無法分析意圖',
-      prompt: { type: '意圖分析', model: 'gpt-3.5-turbo', messages: intentMessages }
+      prompt: { type: '意圖分析', model: 'gpt-4o', messages: intentMessages }
     };
   } catch (error) {
     console.error('Natural intent analysis failed:', error);
@@ -645,7 +696,7 @@ async function reflectNaturally(
       .map(info => info.result.note);
     
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o',  // 升級到 GPT-4o
       messages: [
         {
           role: 'system',
@@ -798,7 +849,7 @@ ${detailedNotes.map(note => {
 
     return {
       reflection: response.choices[0].message.content || '我覺得需要更多思考',
-      prompt: { type: '反思分析', model: 'gpt-3.5-turbo', messages: reflectionMessages }
+      prompt: { type: '反思分析', model: 'gpt-4o', messages: reflectionMessages }
     };
   } catch (error) {
     console.error('Natural reflection failed:', error);

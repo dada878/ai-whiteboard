@@ -9,7 +9,7 @@ const openai = new OpenAI({
 });
 
 // 最大工具呼叫次數
-const MAX_TOOL_CALLS = 5;
+const MAX_TOOL_CALLS = 20;
 
 // 意圖分析提示詞
 const INTENT_ANALYSIS_PROMPT = `分析使用者的問題，識別其真正的意圖和需求。

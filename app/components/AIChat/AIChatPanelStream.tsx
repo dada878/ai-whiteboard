@@ -131,14 +131,9 @@ export function AIChatPanelStream({
 }: AIChatPanelStreamProps) {
   const [input, setInput] = useState('');
   
-  // 使用外部傳入的問題或內部狀態
-  const quickQuestions = preloadedQuestions || [
-    '白板上有哪些內容？',
-    '有哪些群組？',
-    '找出所有待辦事項',
-    '分析白板結構'
-  ];
-  const isLoadingQuestions = externalIsLoadingQuestions || false;
+  // 使用外部傳入的問題（不再提供預設問題）
+  const quickQuestions = preloadedQuestions || [];
+  const isLoadingQuestions = externalIsLoadingQuestions !== undefined ? externalIsLoadingQuestions : false;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { 
@@ -183,9 +178,12 @@ export function AIChatPanelStream({
   };
 
 
-  const handleQuickQuestion = (question: string) => {
-    setInput(question);
-    inputRef.current?.focus();
+  const handleQuickQuestion = async (question: string) => {
+    if (isLoading) return;
+    
+    // 直接發送問題，無需先填入輸入框
+    setInput(''); // 清空輸入框
+    await sendMessage(question);
   };
 
   return (
@@ -222,18 +220,38 @@ export function AIChatPanelStream({
                   <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                {quickQuestions.map((question, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleQuickQuestion(question)}
-                    disabled={isLoadingQuestions}
-                    className="px-2.5 py-1.5 text-xs bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors border border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {question}
-                  </button>
-                ))}
-              </div>
+              {isLoadingQuestions ? (
+                // 載入中顯示骨架屏或載入提示
+                <div className="grid grid-cols-2 gap-2">
+                  {[1, 2, 3, 4].map((idx) => (
+                    <div 
+                      key={idx} 
+                      className="px-2.5 py-1.5 bg-gray-100 rounded-md border border-gray-200 animate-pulse"
+                    >
+                      <div className="h-3 bg-gray-200 rounded w-full"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : quickQuestions.length > 0 ? (
+                // 顯示生成的問題
+                <div className="grid grid-cols-2 gap-2">
+                  {quickQuestions.map((question, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleQuickQuestion(question)}
+                      disabled={isLoading}
+                      className="px-2.5 py-1.5 text-xs bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors border border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                // 沒有問題時顯示提示（通常不會發生）
+                <div className="text-xs text-gray-400 text-center py-2">
+                  正在分析白板內容...
+                </div>
+              )}
             </div>
           </div>
         ) : (

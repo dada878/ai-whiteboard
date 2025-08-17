@@ -9,7 +9,7 @@ const openai = new OpenAI({
 });
 
 // 最大工具呼叫次數
-const MAX_TOOL_CALLS = 5;
+const MAX_TOOL_CALLS = 20;
 
 // 改進的系統提示詞 - 加入反思原始問題的機制
 const SYSTEM_PROMPT = `你是一個智能白板助手。你可以幫助使用者查詢和分析白板上的內容。
