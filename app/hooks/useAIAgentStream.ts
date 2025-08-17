@@ -34,7 +34,7 @@ interface UseAIAgentStreamOptions {
 }
 
 const STORAGE_PREFIX = 'ai_chat_stream_';
-const MAX_STORAGE_MESSAGES = 100; // 最多儲存的訊息數量
+const MAX_STORAGE_MESSAGES = 200; // 增加儲存上限以容納 process/tool 訊息
 
 // 簡單的 token 估算函數（粗略估算：1 token ≈ 4 字符）
 function estimateTokens(text: string): number {
@@ -86,14 +86,16 @@ export function useAIAgentStream(
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
-        // 轉換 timestamp 字串回 Date 物件，並過濾掉 process/tool 訊息
-        return parsed
-          .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
-          .map((msg: any) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp),
-            isStreaming: false // 確保載入的訊息不是串流狀態
-          }));
+        // 轉換 timestamp 字串回 Date 物件，保留所有訊息類型
+        return parsed.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp),
+          isStreaming: false, // 確保載入的訊息不是串流狀態
+          // 確保 toolCalls 陣列正確還原
+          toolCalls: msg.toolCalls || [],
+          // 確保 processInfo 正確還原
+          processInfo: msg.processInfo || undefined
+        }));
       }
     } catch (error) {
       console.error('Failed to load chat history:', error);
@@ -114,11 +116,14 @@ export function useAIAgentStream(
     if (typeof window === 'undefined') return;
     
     try {
-      // 只儲存 user 和 assistant 訊息，過濾掉 process/tool 訊息
-      const toSave = msgs
-        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-        .slice(-MAX_STORAGE_MESSAGES);
-      localStorage.setItem(storageKey, JSON.stringify(toSave));
+      // 保存所有訊息類型，包含 process 和 tool 訊息
+      const toSave = msgs.slice(-MAX_STORAGE_MESSAGES);
+      // 清理某些不需要持久化的暫時性屬性
+      const cleanedMessages = toSave.map(msg => ({
+        ...msg,
+        isStreaming: false // 不儲存串流狀態
+      }));
+      localStorage.setItem(storageKey, JSON.stringify(cleanedMessages));
     } catch (error) {
       console.error('Failed to save chat history:', error);
     }

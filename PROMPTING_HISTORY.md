@@ -175,6 +175,24 @@ AI Chat 面板中存在大量的 `dark:` Tailwind 類別，這些類別在某些
 - 清除對話功能正常運作
 - localStorage 不會無限增長（有 100 條限制）
 
+### 更新 - 保存完整對話記錄
+
+**使用者回饋**：
+訊息雖然保留了，但思考過程和工具調用過程會消失
+
+**改進方案**：
+修改 `useAIAgentStream` 的儲存邏輯，保存所有訊息類型：
+1. **loadMessages**: 保留所有訊息類型（user, assistant, process, tool）
+2. **saveMessages**: 不再過濾 process/tool 訊息
+3. **儲存上限**: 從 100 條增加到 200 條以容納更多詳細記錄
+4. **還原狀態**: 正確還原 toolCalls 和 processInfo 屬性
+
+現在切換 Tab 後，完整的對話記錄包括：
+- ✅ 使用者訊息
+- ✅ AI 回應
+- ✅ 思考過程（意圖分析、反思等）
+- ✅ 工具調用記錄（搜尋、查詢等）
+
 ### 之前記錄
 
 ### 設計 AI Agent 對話功能
