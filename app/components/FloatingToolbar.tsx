@@ -13,6 +13,7 @@ interface FloatingToolbarProps {
   canUndo?: boolean;
   canRedo?: boolean;
   onExport?: (format: 'png' | 'pdf' | 'json') => void;
+  onImport?: () => void;
   onSearch?: () => void;
   onTemplate?: () => void;
   onNotes?: () => void;
@@ -50,6 +51,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   canUndo = false,
   canRedo = false,
   onExport,
+  onImport,
   onSearch,
   onTemplate,
   onNotes,
@@ -571,6 +573,20 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   }`}
                 >
                   匯出為 JSON
+                </button>
+                <div className={`w-full h-px ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`} />
+                <button
+                  onClick={() => {
+                    onImport?.();
+                    setShowExportMenu(false);
+                  }}
+                  className={`w-full px-4 py-2 text-left text-sm ${
+                    isDarkMode 
+                      ? 'hover:bg-dark-bg-tertiary text-gray-300' 
+                      : 'hover:bg-gray-50 text-gray-700'
+                  }`}
+                >
+                  匯入 JSON
                 </button>
               </div>
             )}

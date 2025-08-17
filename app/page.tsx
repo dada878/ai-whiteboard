@@ -1,16 +1,30 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Whiteboard from './components/Whiteboard';
 import PlusWelcomeDialog from './components/PlusWelcomeDialog';
 import Header from './components/Header';
 import { useAuth } from './contexts/AuthContext';
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
 
   useEffect(() => {
+    // 如果還在載入中，不做任何事
+    if (isLoading) return;
+    
+    // 檢查是否為訪客模式
+    const isGuestMode = localStorage.getItem('guestMode') === 'true';
+    
+    // 如果用戶未登入且不是訪客模式，導向到 landing page
+    if (!user && !isGuestMode) {
+      router.push('/landing');
+      return;
+    }
+    
     // 檢查是否是 Plus 會員且尚未顯示過歡迎對話框
     if (user?.isPlus) {
       const hasSeenWelcome = localStorage.getItem('plusWelcomeSeen');
@@ -30,7 +44,7 @@ export default function Home() {
         return () => clearTimeout(timer);
       }
     }
-  }, [user]);
+  }, [user, isLoading, router]);
 
   const handleShowPlusWelcome = () => {
     setShowWelcomeDialog(true);

@@ -12,9 +12,10 @@ npm run start    # Start production server
 npm run lint     # Run ESLint
 ```
 
-### Git Workflow
+### Workflow
 - 每次比較大的改動完成後，在 git commit 之前執行 `npm run lint` 確認沒有重大 lint error
-- 定期 git commit
+- 定期 `git commit`
+- 不要自行 `npm run dev`，我會執行
 
 ## Architecture Overview
 

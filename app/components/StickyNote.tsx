@@ -129,10 +129,15 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
       
       // 使用更長的延遲確保 DOM 完全更新並獲得焦點
       setTimeout(() => {
+        // 防止在元素被刪除或組件卸載時執行 focus
+        if (!element.isConnected) {
+          return;
+        }
+        
         element.focus();
         
         // 確保元素真的獲得了焦點
-        if (document.activeElement !== element) {
+        if (document.activeElement !== element && element.isConnected) {
           element.focus();
         }
         
@@ -691,8 +696,8 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
               style={{ 
                 height: getContentHeight(),
                 display: isEditing ? 'table' : 'flex',
-                alignItems: isEditing ? 'unset' : 'center',
-                justifyContent: isEditing ? 'unset' : 'center'
+                alignItems: isEditing ? undefined : 'center',
+                justifyContent: isEditing ? undefined : 'center'
               }}
             >
               {isEditing ? (
@@ -811,18 +816,21 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                     // 阻止事件傳播
                     e.stopPropagation();
                   }}
-                  className="w-full h-full border-none outline-none bg-transparent text-gray-800 leading-relaxed cursor-text text-center contenteditable-placeholder"
+                  className="border-none outline-none bg-transparent text-gray-800 leading-relaxed cursor-text text-center contenteditable-placeholder"
                   style={{ 
                     fontSize: `${getAdaptiveFontSize()}px`,
-                    lineHeight: '1.2',
+                    lineHeight: '1.4',
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
                     overflowWrap: 'break-word',
                     textAlign: 'center',
+                    minHeight: `${getAdaptiveFontSize()}px`,
+                    padding: '0',
+                    margin: '0',
                     width: '100%',
                     height: '100%',
-                    padding: '0',
-                    margin: '0'
+                    display: 'table-cell',
+                    verticalAlign: 'middle'
                   }}
                   data-placeholder={!content ? '點擊編輯...' : ''}
                 />

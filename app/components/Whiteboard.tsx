@@ -89,6 +89,7 @@ const Whiteboard: React.FC = () => {
     targetArea?: unknown;
     targetNotes?: unknown[];
   } | null>(null);
+  const [autoFocusGroupId, setAutoFocusGroupId] = useState<string | null>(null);
 
   // Plus 權限檢查
   const requirePlus = useCallback(() => {
@@ -226,6 +227,12 @@ const Whiteboard: React.FC = () => {
   const deleteSelectedItems = useCallback(() => {
     if (selectedNotes.length > 0 || selectedNote) {
       saveToHistory(whiteboardData);
+      
+      // 清除焦點以防止視窗移動
+      if (document.activeElement && (document.activeElement as HTMLElement).blur) {
+        (document.activeElement as HTMLElement).blur();
+      }
+      
       const notesToDelete = selectedNote ? [selectedNote] : selectedNotes;
       
       updateWhiteboardData(prev => ({
@@ -314,6 +321,7 @@ const Whiteboard: React.FC = () => {
     setSelectedGroup(groupId);
     setSelectedNotes([]);
     setSelectedNote(null);
+    setAutoFocusGroupId(groupId);
     
     return groupId;
   }, [whiteboardData, saveToHistory]);
@@ -961,6 +969,11 @@ const Whiteboard: React.FC = () => {
   const deleteStickyNote = useCallback((id: string) => {
     saveToHistory(whiteboardData); // 保存歷史記錄
     
+    // 清除焦點以防止視窗移動
+    if (document.activeElement && (document.activeElement as HTMLElement).blur) {
+      (document.activeElement as HTMLElement).blur();
+    }
+    
     // 清理選取狀態
     if (selectedNote === id) {
       setSelectedNote(null);
@@ -1152,8 +1165,89 @@ const Whiteboard: React.FC = () => {
       return;
     }
     
-    // 如果正在連接但沒有有效目標，取消連接
-    if (connectingFrom) {
+    // 如果正在連接但沒有有效目標，在滑鼠位置創建新便利貼並連接
+    if (connectingFrom && !hoveredNote) {
+      // 取得起始便利貼
+      const fromNote = whiteboardData.notes.find(note => note.id === connectingFrom);
+      if (!fromNote) {
+        setConnectingFrom(null);
+        return;
+      }
+      
+      // 計算起始便利貼的中心點
+      const fromX = fromNote.x + fromNote.width / 2;
+      const fromY = fromNote.y + fromNote.height / 2;
+      
+      // 計算角度（從起始便利貼指向滑鼠位置）
+      const angle = Math.atan2(mousePosition.y - fromY, mousePosition.x - fromX);
+      
+      // 新便利貼的尺寸
+      const newNoteWidth = 200;
+      const newNoteHeight = 200;
+      
+      // 重要：與預覽線條保持一致的參數
+      const gap = 15; // 與 Edge 組件中的 gap 保持一致
+      const arrowSize = 16; // 箭頭大小
+      const arrowOffset = 8; // 箭頭往前的偏移量
+      
+      // 計算到新便利貼邊緣的距離（反向角度）
+      const getDistanceToEdge = (width: number, height: number, angleToEdge: number) => {
+        const halfWidth = width / 2;
+        const halfHeight = height / 2;
+        const absAngle = Math.abs(angleToEdge);
+        
+        // 根據角度判斷與哪個邊相交
+        if (Math.abs(Math.cos(angleToEdge)) > Math.abs(Math.sin(angleToEdge))) {
+          return halfWidth / Math.abs(Math.cos(angleToEdge));
+        } else {
+          return halfHeight / Math.abs(Math.sin(angleToEdge));
+        }
+      };
+      
+      // 計算新便利貼需要與箭頭尖端的距離
+      // 箭頭尖端位置 = mousePosition + arrowOffset
+      // 新便利貼邊緣需要在箭頭尖端往回 (gap + edgeDistance) 的位置
+      const reverseAngle = angle + Math.PI; // 反向角度（從滑鼠指向便利貼）
+      const toEdgeDistance = getDistanceToEdge(newNoteWidth, newNoteHeight, reverseAngle);
+      
+      // 計算箭頭尖端位置（與預覽線條一致）
+      const arrowTipX = mousePosition.x + Math.cos(angle) * arrowOffset;
+      const arrowTipY = mousePosition.y + Math.sin(angle) * arrowOffset;
+      
+      // 從箭頭尖端往回計算新便利貼的中心位置
+      const totalDistance = toEdgeDistance + gap + arrowOffset;
+      const newNoteCenterX = arrowTipX - Math.cos(angle) * (toEdgeDistance + gap);
+      const newNoteCenterY = arrowTipY - Math.sin(angle) * (toEdgeDistance + gap);
+      
+      // 計算新便利貼的左上角位置
+      const newNoteX = newNoteCenterX - newNoteWidth / 2;
+      const newNoteY = newNoteCenterY - newNoteHeight / 2;
+      
+      const newNoteId = `note_${Date.now()}`;
+      const newNote: StickyNote = {
+        id: newNoteId,
+        x: newNoteX,
+        y: newNoteY,
+        width: newNoteWidth,
+        height: newNoteHeight,
+        content: '',
+        color: '#FEF3C7'
+      };
+      
+      // 更新白板數據
+      updateWhiteboardData(prev => ({
+        ...prev,
+        notes: [...prev.notes, newNote]
+      }));
+      
+      // 創建連接
+      addEdge(connectingFrom, newNoteId);
+      
+      // 自動選中並進入編輯模式
+      setSelectedNote(newNoteId);
+      setAutoEditNoteId(newNoteId);
+      
+      // 清理連接狀態
       setConnectingFrom(null);
       setHoveredNote(null);
       return;
@@ -1163,7 +1257,7 @@ const Whiteboard: React.FC = () => {
     
     // 重置畫板拖曳狀態
     setIsDragging(false);
-  }, [connectingFrom, hoveredNote, addEdge]);
+  }, [connectingFrom, hoveredNote, addEdge, mousePosition, updateWhiteboardData]);
 
   const handleCanvasRightClick = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -2966,14 +3060,25 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
 
     const confirmClear = window.confirm('確定要清除所有便利貼和連線嗎？此操作無法復原。');
     if (confirmClear) {
-      setWhiteboardData({ notes: [], edges: [], groups: [] });
+      const emptyData = { notes: [], edges: [], groups: [] };
+      setWhiteboardData(emptyData);
       setAiResult('');
       setSelectedNote(null);
       setConnectingFrom(null);
+      
+      // 清空當前專案的資料
+      if (currentProjectId) {
+        ProjectService.saveProjectData(currentProjectId, emptyData, {
+          zoomLevel,
+          panOffset
+        });
+      }
+      
+      // 清空舊的儲存格式（相容性）
       StorageService.clearWhiteboardData();
-      setLastSaveTime(null);
+      setLastSaveTime(new Date());
     }
-  }, [whiteboardData]);
+  }, [whiteboardData, currentProjectId, zoomLevel, panOffset]);
 
   return (
     <div className={`flex h-full ${isDarkMode ? 'bg-dark-bg' : 'bg-white'}`}>
@@ -3075,62 +3180,102 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
 
               const fromX = fromNote.x + fromNote.width / 2;
               const fromY = fromNote.y + fromNote.height / 2;
-              const toX = mousePosition.x;
-              const toY = mousePosition.y;
+              let toX = mousePosition.x;
+              let toY = mousePosition.y;
 
               // 如果懸停在目標便利貼上，連到便利貼中心
-              let targetX = toX;
-              let targetY = toY;
+              if (hoveredNote) {
+                const hoveredNoteData = whiteboardData.notes.find(note => note.id === hoveredNote);
+                if (hoveredNoteData) {
+                  toX = hoveredNoteData.x + hoveredNoteData.width / 2;
+                  toY = hoveredNoteData.y + hoveredNoteData.height / 2;
+                }
+              }
+
+              // 計算箭頭角度
+              const angle = Math.atan2(toY - fromY, toX - fromX);
+              
+              // 計算到正方形邊緣的實際距離（與 Edge 組件相同的計算方式）
+              const getDistanceToEdge = (width: number, height: number, angle: number) => {
+                const halfWidth = width / 2;
+                const halfHeight = height / 2;
+                
+                if (Math.abs(Math.cos(angle)) > Math.abs(Math.sin(angle))) {
+                  return halfWidth / Math.abs(Math.cos(angle));
+                } else {
+                  return halfHeight / Math.abs(Math.sin(angle));
+                }
+              };
+              
+              // 調整起點位置，留出間距（與實際線條一致）
+              const gap = 15;
+              const fromDistance = getDistanceToEdge(fromNote.width, fromNote.height, angle) + gap;
+              const adjustedFromX = fromX + Math.cos(angle) * fromDistance;
+              const adjustedFromY = fromY + Math.sin(angle) * fromDistance;
+              
+              // 調整終點位置
+              let adjustedToX = toX;
+              let adjustedToY = toY;
               
               if (hoveredNote) {
                 const hoveredNoteData = whiteboardData.notes.find(note => note.id === hoveredNote);
                 if (hoveredNoteData) {
-                  targetX = hoveredNoteData.x + hoveredNoteData.width / 2;
-                  targetY = hoveredNoteData.y + hoveredNoteData.height / 2;
-
-                  // 調整終點到便利貼邊緣
-                  const angle = Math.atan2(targetY - fromY, targetX - fromX);
-                  targetX = targetX - Math.cos(angle) * (hoveredNoteData.width / 2);
-                  targetY = targetY - Math.sin(angle) * (hoveredNoteData.height / 2);
+                  const toDistance = getDistanceToEdge(hoveredNoteData.width, hoveredNoteData.height, angle) + gap;
+                  adjustedToX = toX - Math.cos(angle) * toDistance;
+                  adjustedToY = toY - Math.sin(angle) * toDistance;
                 }
               }
 
-              const previewColor = hoveredNote ? '#A855F7' : '#6B7280'; // 紫色或灰色
-              const strokeWidth = hoveredNote ? 4 : 3.5; // 與實際線條粗細一致
+              // 箭頭設定（與 Edge 組件保持一致）
+              const arrowSize = 16;
+              const arrowOffset = 8;
+              const arrowTipX = adjustedToX + Math.cos(angle) * arrowOffset;
+              const arrowTipY = adjustedToY + Math.sin(angle) * arrowOffset;
+              
+              const arrowPoints = [
+                [arrowTipX, arrowTipY],
+                [
+                  arrowTipX - arrowSize * Math.cos(angle - Math.PI / 6),
+                  arrowTipY - arrowSize * Math.sin(angle - Math.PI / 6)
+                ],
+                [
+                  arrowTipX - arrowSize * Math.cos(angle + Math.PI / 6),
+                  arrowTipY - arrowSize * Math.sin(angle + Math.PI / 6)
+                ]
+              ].map(point => point.join(',')).join(' ');
+
+              // 預覽線條顏色和樣式
+              const previewColor = hoveredNote ? '#10b981' : '#6B7280';
+              const strokeWidth = 3.5;
 
               return (
                 <g key="preview-line">
                   <line
-                    x1={fromX}
-                    y1={fromY}
-                    x2={targetX}
-                    y2={targetY}
+                    x1={adjustedFromX}
+                    y1={adjustedFromY}
+                    x2={arrowTipX - Math.cos(angle) * (arrowSize * 0.7)}
+                    y2={arrowTipY - Math.sin(angle) * (arrowSize * 0.7)}
                     stroke={previewColor}
                     strokeWidth={strokeWidth}
                     strokeDasharray={hoveredNote ? "none" : "5,5"}
                     style={{
                       pointerEvents: 'none',
-                      opacity: 0.8,
+                      opacity: hoveredNote ? 0.9 : 0.6,
                       transition: 'all 0.2s ease'
                     }}
+                    className={hoveredNote ? "" : "animate-pulse"}
                   />
-                  {hoveredNote && (
-                    <polygon
-                      points={[
-                        [targetX, targetY],
-                        [
-                          targetX - 8 * Math.cos(Math.atan2(targetY - fromY, targetX - fromX) - Math.PI / 6),
-                          targetY - 8 * Math.sin(Math.atan2(targetY - fromY, targetX - fromX) - Math.PI / 6)
-                        ],
-                        [
-                          targetX - 8 * Math.cos(Math.atan2(targetY - fromY, targetX - fromX) + Math.PI / 6),
-                          targetY - 8 * Math.sin(Math.atan2(targetY - fromY, targetX - fromX) + Math.PI / 6)
-                        ]
-                      ].map(point => point.join(',')).join(' ')}
-                      fill={previewColor}
-                      style={{ pointerEvents: 'none', opacity: 0.8 }}
-                    />
-                  )}
+                  {/* 箭頭 */}
+                  <polygon
+                    points={arrowPoints}
+                    fill={previewColor}
+                    style={{ 
+                      pointerEvents: 'none',
+                      opacity: hoveredNote ? 0.9 : 0.6,
+                      transition: 'all 0.2s ease'
+                    }}
+                    className={hoveredNote ? "" : "animate-pulse"}
+                  />
                 </g>
               );
             })()}
@@ -3147,6 +3292,8 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                   bounds={bounds}
                   isSelected={isSelected}
                   zoomLevel={zoomLevel}
+                  shouldAutoFocus={autoFocusGroupId === group.id}
+                  onAutoFocusHandled={() => setAutoFocusGroupId(null)}
                   onSelect={() => {
                     setSelectedGroup(group.id);
                     setSelectedNote(null);
@@ -3515,6 +3662,40 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
             console.error('匯出失敗:', error);
             setAiResult('❌ 匯出失敗，請稍後再試');
           }
+        }}
+        onImport={async () => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = '.json';
+          input.onchange = async (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file) {
+              try {
+                const { exportWhiteboard } = await import('../services/exportService');
+                const importedData = await exportWhiteboard.importJSON(file);
+                
+                // 確認是否要替換當前白板
+                if (whiteboardData.notes.length > 0) {
+                  if (!confirm('匯入會替換當前的白板內容，確定要繼續嗎？')) {
+                    return;
+                  }
+                }
+                
+                // 設定匯入的資料
+                setWhiteboardData(importedData);
+                // 儲存到歷史記錄
+                setHistory([...history.slice(0, historyIndex + 1), importedData]);
+                setHistoryIndex(historyIndex + 1);
+                // 儲存到本地儲存
+                StorageService.saveWhiteboardData(importedData);
+                setAiResult('✅ 已成功匯入白板資料');
+              } catch (error) {
+                console.error('匯入失敗:', error);
+                setAiResult('❌ 匯入失敗，請確認檔案格式正確');
+              }
+            }
+          };
+          input.click();
         }}
         onSearch={() => {
           // TODO: 實現搜尋功能

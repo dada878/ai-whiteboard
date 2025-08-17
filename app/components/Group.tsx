@@ -10,6 +10,8 @@ interface GroupComponentProps {
   bounds: { x: number; y: number; width: number; height: number };
   isSelected: boolean;
   zoomLevel?: number;
+  shouldAutoFocus?: boolean;
+  onAutoFocusHandled?: () => void;
   onSelect: () => void;
   onUpdateName: (name: string) => void;
   onUpdateColor: (color: string) => void;
@@ -34,6 +36,8 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
   bounds,
   isSelected,
   zoomLevel = 1,
+  shouldAutoFocus = false,
+  onAutoFocusHandled,
   onSelect,
   onUpdateName,
   onUpdateColor,
@@ -54,6 +58,17 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
       nameInputRef.current.select();
     }
   }, [isEditingName]);
+
+  // Auto-focus effect for newly created groups
+  useEffect(() => {
+    if (shouldAutoFocus && !isEditingName) {
+      setIsEditingName(true);
+      setTempName(group.name);
+      if (onAutoFocusHandled) {
+        onAutoFocusHandled();
+      }
+    }
+  }, [shouldAutoFocus, isEditingName, group.name, onAutoFocusHandled]);
 
   const handleNameClick = (e: React.MouseEvent) => {
     e.stopPropagation();
