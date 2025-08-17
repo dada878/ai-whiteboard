@@ -167,7 +167,12 @@ export class ProjectService {
       });
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json().catch(() => null);
+        console.error('Project update failed:', {
+          status: response.status,
+          error: errorData
+        });
+        throw new Error(`HTTP error! status: ${response.status}, ${errorData?.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to update project:', error);
@@ -223,6 +228,17 @@ export class ProjectService {
     try {
       const dataWithViewport = viewport ? { ...data, viewport } : data;
       
+      // 檢查資料大小
+      const dataSize = JSON.stringify(dataWithViewport).length;
+      console.log('Saving project data:', {
+        projectId,
+        dataSize: `${(dataSize / 1024).toFixed(2)} KB`,
+        notes: data.notes?.length || 0,
+        edges: data.edges?.length || 0,
+        groups: data.groups?.length || 0,
+        images: data.images?.length || 0
+      });
+      
       const response = await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -234,15 +250,41 @@ export class ProjectService {
       });
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json().catch(() => null);
+        console.error('Save project data failed:', {
+          status: response.status,
+          error: errorData,
+          projectId,
+          dataSize: `${(dataSize / 1024).toFixed(2)} KB`
+        });
+        throw new Error(`HTTP error! status: ${response.status}, ${errorData?.error || 'Unknown error'}`);
       }
       
-      // 生成縮圖並更新專案 metadata
+      // 只更新縮圖，不需要重複更新其他欄位
+      // 因為專案的 name 和 description 不應該在這裡被改變
       const thumbnail = this.generateThumbnail(data);
-      await this.updateProject(projectId, { 
+      
+      // 建立只包含必要欄位的更新物件
+      const updateData: any = {
         updatedAt: new Date(),
-        thumbnail 
+        thumbnail
+      };
+      
+      // 不呼叫 updateProject，直接更新縮圖
+      // 這樣可以避免 undefined 值的問題
+      const updateResponse = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save',
+          projectId,
+          projectMetadata: updateData
+        })
       });
+      
+      if (!updateResponse.ok) {
+        console.warn('Failed to update thumbnail, but data was saved');
+      }
     } catch (error) {
       console.error('Failed to save project data:', error);
       throw error;

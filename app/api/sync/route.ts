@@ -38,35 +38,76 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Missing projectId for save action' }, { status: 400 });
         }
         
-        // Save project metadata if provided
-        if (projectMetadata) {
-          await adminDb
-            .collection('users')
-            .doc(userId)
-            .collection('projects')
-            .doc(projectId)
-            .set({
-              name: projectMetadata.name,
-              description: projectMetadata.description,
-              createdAt: projectMetadata.createdAt || new Date().toISOString(),
+        try {
+          // Save project metadata if provided
+          if (projectMetadata) {
+            console.log('Saving project metadata for:', projectId);
+            console.log('Metadata received:', projectMetadata);
+            
+            // 建立安全的更新物件，過濾掉 undefined 值
+            const updateData: any = {
               updatedAt: new Date().toISOString()
-            }, { merge: true });
+            };
+            
+            if (projectMetadata.name !== undefined) {
+              updateData.name = projectMetadata.name;
+            }
+            if (projectMetadata.description !== undefined) {
+              updateData.description = projectMetadata.description;
+            }
+            if (projectMetadata.createdAt !== undefined) {
+              updateData.createdAt = projectMetadata.createdAt;
+            }
+            
+            // 只有在有有效資料時才更新
+            if (Object.keys(updateData).length > 1) { // 至少有 updatedAt 以外的欄位
+              await adminDb
+                .collection('users')
+                .doc(userId)
+                .collection('projects')
+                .doc(projectId)
+                .set(updateData, { merge: true });
+            }
+          }
+          
+          // Save whiteboard data if provided
+          if (data) {
+            console.log('Saving whiteboard data for:', projectId);
+            console.log('Data structure:', {
+              notes: data.notes?.length || 0,
+              edges: data.edges?.length || 0,
+              groups: data.groups?.length || 0,
+              images: data.images?.length || 0
+            });
+            
+            await adminDb
+              .collection('users')
+              .doc(userId)
+              .collection('projects')
+              .doc(projectId)
+              .collection('data')
+              .doc('whiteboard')
+              .set({
+                ...data,
+                lastModified: new Date().toISOString()
+              }, { merge: true });
+          }
+          
+          return NextResponse.json({ success: true });
+        } catch (saveError) {
+          console.error('Error saving project data:', saveError);
+          console.error('Error details:', {
+            projectId,
+            userId,
+            hasData: !!data,
+            hasMetadata: !!projectMetadata,
+            error: saveError instanceof Error ? saveError.message : 'Unknown error'
+          });
+          return NextResponse.json({ 
+            error: 'Failed to save project data',
+            details: saveError instanceof Error ? saveError.message : 'Unknown error'
+          }, { status: 500 });
         }
-        
-        // Save whiteboard data
-        await adminDb
-          .collection('users')
-          .doc(userId)
-          .collection('projects')
-          .doc(projectId)
-          .collection('data')
-          .doc('whiteboard')
-          .set({
-            ...data,
-            lastModified: new Date().toISOString()
-          }, { merge: true });
-        
-        return NextResponse.json({ success: true });
 
       case 'load':
         // Load whiteboard data
@@ -164,6 +205,27 @@ export async function POST(req: NextRequest) {
     }
   } catch (error) {
     console.error('Sync API error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    
+    // 檢查是否是 Firebase 權限錯誤
+    if (error instanceof Error && error.message.includes('permission')) {
+      return NextResponse.json({ 
+        error: 'Firebase permission denied',
+        details: error.message 
+      }, { status: 403 });
+    }
+    
+    // 檢查是否是 Firebase 配置錯誤
+    if (error instanceof Error && error.message.includes('Firebase')) {
+      return NextResponse.json({ 
+        error: 'Firebase configuration error',
+        details: error.message 
+      }, { status: 500 });
+    }
+    
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
