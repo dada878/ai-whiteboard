@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Clock, User, FileText, Trash2, RotateCcw, Save, Download, ChevronDown } from 'lucide-react';
+import { Clock, User, FileText, Trash2, RotateCcw, Save, ChevronDown } from 'lucide-react';
 import { Version, VersionService, VersionData } from '../services/versionService';
 import { WhiteboardData } from '../types';
 import { format, formatDistanceToNow } from 'date-fns';
