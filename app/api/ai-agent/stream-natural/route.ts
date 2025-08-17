@@ -240,6 +240,9 @@ export async function POST(request: NextRequest) {
               for (const toolCall of responseMessage.tool_calls) {
                 toolCallCount++;
                 
+                // Type guard for tool calls with function property
+                if (!('function' in toolCall)) continue;
+                
                 // 發送工具呼叫開始事件
                 controller.enqueue(encoder.encode(
                   `data: ${JSON.stringify({
@@ -271,7 +274,7 @@ export async function POST(request: NextRequest) {
                     tool: toolCall.function.name,
                     result: result,
                     attempt: toolCallCount,
-                    prompt: result.prompt || null // 如果工具返回了 prompt 信息
+                    prompt: (result as any).prompt || null // 如果工具返回了 prompt 信息
                   })}\n\n`
                 ));
 
@@ -473,7 +476,7 @@ async function generateComprehensiveOverview(whiteboardData: WhiteboardData): Pr
     // 只進行簡潔的摘要生成，不做複雜的結構分析
     const summaryResponse = await openai.chat.completions.create({
       model: 'gpt-4o',  // 升級到 GPT-4o
-      messages: summaryPrompt,
+      messages: summaryPrompt as any,
       max_tokens: 500,  // GPT-4o 可以生成更詳細的摘要
       temperature: 0.5,
     });
@@ -618,7 +621,7 @@ async function analyzeIntentNaturally(
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',  // 升級到 GPT-4o
-      messages: intentMessages,
+      messages: intentMessages as any,
       temperature: 0.7
     });
 
@@ -729,8 +732,8 @@ ${detailedNotes.map(note => {
   const outgoingNodes = note.connections?.outgoing || [];
   
   if (incomingNodes.length > 0 || outgoingNodes.length > 0) {
-    const incomingIds = incomingNodes.map(conn => conn.noteId);
-    const outgoingIds = outgoingNodes.map(conn => conn.noteId);
+    const incomingIds = incomingNodes.map((conn: any) => conn.noteId);
+    const outgoingIds = outgoingNodes.map((conn: any) => conn.noteId);
     const allConnectedIds = [...incomingIds, ...outgoingIds];
     
     const alreadyExplored = allConnectedIds.filter(id => detailedNotes.some(n => n.id === id));
@@ -738,8 +741,8 @@ ${detailedNotes.map(note => {
     
     // 顯示相鄰節點的內容預覽
     const notExploredWithContent = notExplored.map(id => {
-      const incomingMatch = incomingNodes.find(n => n.noteId === id);
-      const outgoingMatch = outgoingNodes.find(n => n.noteId === id);
+      const incomingMatch = incomingNodes.find((n: any) => n.noteId === id);
+      const outgoingMatch = outgoingNodes.find((n: any) => n.noteId === id);
       const content = incomingMatch?.noteContent || outgoingMatch?.noteContent || '未知';
       return `${id.substring(0, 8)}...(${content.substring(0, 20)}...)`;
     });
@@ -805,8 +808,8 @@ ${detailedNotes.map(note => {
   const outgoingNodes = note.connections?.outgoing || [];
   
   if (incomingNodes.length > 0 || outgoingNodes.length > 0) {
-    const incomingIds = incomingNodes.map(conn => conn.noteId);
-    const outgoingIds = outgoingNodes.map(conn => conn.noteId);
+    const incomingIds = incomingNodes.map((conn: any) => conn.noteId);
+    const outgoingIds = outgoingNodes.map((conn: any) => conn.noteId);
     const allConnectedIds = [...incomingIds, ...outgoingIds];
     
     const alreadyExplored = allConnectedIds.filter(id => detailedNotes.some(n => n.id === id));
@@ -814,8 +817,8 @@ ${detailedNotes.map(note => {
     
     // 顯示相鄰節點的內容預覽
     const notExploredWithContent = notExplored.map(id => {
-      const incomingMatch = incomingNodes.find(n => n.noteId === id);
-      const outgoingMatch = outgoingNodes.find(n => n.noteId === id);
+      const incomingMatch = incomingNodes.find((n: any) => n.noteId === id);
+      const outgoingMatch = outgoingNodes.find((n: any) => n.noteId === id);
       const content = incomingMatch?.noteContent || outgoingMatch?.noteContent || '未知';
       return `${id.substring(0, 8)}...(${content.substring(0, 20)}...)`;
     });
@@ -981,8 +984,8 @@ async function searchNotes(params: any, whiteboardData: WhiteboardData) {
 
   // 改進的搜尋邏輯
   const keywords = params.keywords
-    .filter(k => k && typeof k === 'string' && k.trim().length > 0)
-    .map(k => k.toLowerCase().trim());
+    .filter((k: any) => k && typeof k === 'string' && k.trim().length > 0)
+    .map((k: any) => k.toLowerCase().trim());
   
   if (keywords.length === 0) {
     return {
@@ -1010,7 +1013,7 @@ async function searchNotes(params: any, whiteboardData: WhiteboardData) {
     const content = note.content.toLowerCase();
     
     // 支援多種匹配方式
-    const matchResults = keywords.map((keyword, keywordIndex) => {
+    const matchResults = keywords.map((keyword: any, keywordIndex: number) => {
       // 完全匹配
       const exactMatch = content.includes(keyword);
       if (exactMatch) {
@@ -1028,11 +1031,11 @@ async function searchNotes(params: any, whiteboardData: WhiteboardData) {
       }
       
       // 分詞匹配（適用於中文）
-      const contentWords = cleanContent.split(/\s+/).filter(w => w.length > 0);
-      const keywordWords = cleanKeyword.split(/\s+/).filter(w => w.length > 0);
+      const contentWords = cleanContent.split(/\s+/).filter((w: any) => w.length > 0);
+      const keywordWords = cleanKeyword.split(/\s+/).filter((w: any) => w.length > 0);
       
-      const wordMatch = keywordWords.some(kw => 
-        contentWords.some(cw => cw.includes(kw) || kw.includes(cw))
+      const wordMatch = keywordWords.some((kw: any) => 
+        contentWords.some((cw: any) => cw.includes(kw) || kw.includes(cw))
       );
       
       if (wordMatch) {
@@ -1053,7 +1056,7 @@ async function searchNotes(params: any, whiteboardData: WhiteboardData) {
     });
 
     // 根據匹配模式決定 - 強制使用 'any' 模式以支援發散性搜尋
-    const finalMatch = matchResults.some(result => result); // 永遠使用 'any' 模式
+    const finalMatch = matchResults.some((result: any) => result); // 永遠使用 'any' 模式
     
     if (finalMatch) {
       console.log(`📍 便利貼 "${note.content}" 最終匹配成功！`);
@@ -1109,7 +1112,7 @@ async function searchNotes(params: any, whiteboardData: WhiteboardData) {
       },
       group: groupInfo,
       // 加入匹配高亮資訊（可選）
-      matchedKeywords: keywords.filter(keyword => 
+      matchedKeywords: keywords.filter((keyword: any) => 
         note.content.toLowerCase().includes(keyword)
       )
     };
@@ -1222,7 +1225,7 @@ async function getNoteById(params: any, whiteboardData: WhiteboardData) {
       groupInfo = {
         id: group.id,
         name: group.name,
-        description: group.description
+        description: (group as any).description
       };
     }
   }
@@ -1266,9 +1269,9 @@ async function searchGroups(params: any, whiteboardData: WhiteboardData) {
   const groups = whiteboardData.groups || [];
   const matchedGroups = groups.filter(group => {
     const name = group.name.toLowerCase();
-    const keywords = params.keywords.map(k => k.toLowerCase());
+    const keywords = params.keywords.map((k: any) => k.toLowerCase());
     // 強制使用 any 模式
-    return keywords.some(keyword => name.includes(keyword));
+    return keywords.some((keyword: any) => name.includes(keyword));
   });
   return {
     results: matchedGroups.map(g => ({

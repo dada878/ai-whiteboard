@@ -171,12 +171,14 @@ ${contextualInfo}
               for (const toolCall of responseMessage.tool_calls) {
                 toolCallCount++;
                 
+                const tc = toolCall as any;
+                
                 // 發送工具呼叫開始事件
                 controller.enqueue(encoder.encode(
                   `data: ${JSON.stringify({
                     type: 'tool_call_start',
-                    tool: toolCall.function.name,
-                    args: JSON.parse(toolCall.function.arguments),
+                    tool: tc.function.name,
+                    args: JSON.parse(tc.function.arguments),
                     attempt: toolCallCount,
                     maxAttempts: MAX_TOOL_CALLS
                   })}\n\n`
@@ -184,14 +186,14 @@ ${contextualInfo}
 
                 // 執行工具
                 const result = await executeToolCall(
-                  toolCall.function.name,
-                  JSON.parse(toolCall.function.arguments),
+                  tc.function.name,
+                  JSON.parse(tc.function.arguments),
                   whiteboardData
                 );
 
                 collectedInfo.push({
-                  tool: toolCall.function.name,
-                  args: JSON.parse(toolCall.function.arguments),
+                  tool: tc.function.name,
+                  args: JSON.parse(tc.function.arguments),
                   result: result
                 });
 
@@ -199,7 +201,7 @@ ${contextualInfo}
                 controller.enqueue(encoder.encode(
                   `data: ${JSON.stringify({
                     type: 'tool_call_result',
-                    tool: toolCall.function.name,
+                    tool: tc.function.name,
                     result: result,
                     attempt: toolCallCount
                   })}\n\n`
@@ -209,7 +211,7 @@ ${contextualInfo}
                 allMessages.push({
                   role: 'tool' as const,
                   content: typeof result === 'string' ? result : JSON.stringify(result),
-                  tool_call_id: toolCall.id
+                  tool_call_id: tc.id
                 });
               }
 
@@ -503,7 +505,7 @@ function generateRelationshipContext(whiteboardData: WhiteboardData): string {
 - 巢狀深度：最深 ${connectionStats.maxDepth} 層
 
 🎯 中心節點（hub）：
-${connectionStats.hubs.map(h => `- ${h.content.substring(0, 50)}`).join('\n')}
+${connectionStats.hubs.map((h: any) => `- ${h.content.substring(0, 50)}`).join('\n')}
 `;
 }
 
@@ -819,11 +821,11 @@ async function searchNotes(params: any, whiteboardData: WhiteboardData) {
   }
   const matchedNotes = notes.filter(note => {
     const content = note.content.toLowerCase();
-    const keywords = params.keywords.map(k => k.toLowerCase());
+    const keywords = params.keywords.map((k: any) => k.toLowerCase());
     if (params.match_type === 'all') {
-      return keywords.every(keyword => content.includes(keyword));
+      return keywords.every((keyword: any) => content.includes(keyword));
     } else {
-      return keywords.some(keyword => content.includes(keyword));
+      return keywords.some((keyword: any) => content.includes(keyword));
     }
   });
   return {
@@ -845,11 +847,11 @@ async function searchGroups(params: any, whiteboardData: WhiteboardData) {
   const groups = whiteboardData.groups || [];
   const matchedGroups = groups.filter(group => {
     const name = group.name.toLowerCase();
-    const keywords = params.keywords.map(k => k.toLowerCase());
+    const keywords = params.keywords.map((k: any) => k.toLowerCase());
     if (params.match_type === 'all') {
-      return keywords.every(keyword => name.includes(keyword));
+      return keywords.every((keyword: any) => name.includes(keyword));
     } else {
-      return keywords.some(keyword => name.includes(keyword));
+      return keywords.some((keyword: any) => name.includes(keyword));
     }
   });
   return {

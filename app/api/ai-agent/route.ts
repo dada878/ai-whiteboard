@@ -62,13 +62,13 @@ export async function POST(request: NextRequest) {
       // 獲取主要群組
       const topGroups = groups
         .slice(0, 5)
-        .map(g => `「${g.name}」(${g.noteIds?.length || 0} 個便利貼)`)
+        .map((g: any) => `「${g.name}」(${g.noteIds?.length || 0} 個便利貼)`)
         .join('、');
       
       // 獲取一些關鍵便利貼內容（前10個）
       const sampleNotes = notes
         .slice(0, 10)
-        .map(n => {
+        .map((n: any) => {
           const content = n.content.length > 30 ? 
             n.content.substring(0, 30) + '...' : 
             n.content;
@@ -89,7 +89,7 @@ ${groups.length > 0 ? `主要群組：
 ${topGroups}
 ` : ''}${sampleNotes.length > 0 ? `
 部分便利貼內容：
-${sampleNotes.map(s => `- ${s}`).join('\n')}
+${sampleNotes.map((s: string) => `- ${s}`).join('\n')}
 ` : ''}
 請注意：以上是白板的快速摘要，你可以使用工具查詢更詳細的資訊。`;
     };
@@ -450,7 +450,7 @@ async function getGroupById(
     };
   }
   
-  let contains = { notes: [], groups: [] };
+  let contains: any = { notes: [], groups: [] };
   let parentGroup = undefined;
   
   if (params.include_contents !== false) {
