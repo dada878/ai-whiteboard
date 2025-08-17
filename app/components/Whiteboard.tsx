@@ -225,9 +225,12 @@ const Whiteboard: React.FC = () => {
 
   const selectAllNotes = useCallback(() => {
     const allNoteIds = whiteboardData.notes.map(note => note.id);
+    const allImageIds = whiteboardData.images?.map(img => img.id) || [];
     setSelectedNotes(allNoteIds);
+    setSelectedImages(allImageIds);
     setSelectedNote(null);
-  }, [whiteboardData.notes]);
+    setSelectedImage(null);
+  }, [whiteboardData.notes, whiteboardData.images]);
 
   const deleteSelectedItems = useCallback(() => {
     saveToHistory(whiteboardData);
@@ -458,30 +461,46 @@ const Whiteboard: React.FC = () => {
 
   // 初始化批量拖曳位置
   const initBatchDragPositions = useCallback(() => {
+    const positions: {[key: string]: {x: number, y: number}} = {};
+    
+    // 加入選中的便利貼
     if (selectedNotes.length > 0) {
-      const positions: {[key: string]: {x: number, y: number}} = {};
       selectedNotes.forEach(noteId => {
         const note = whiteboardData.notes.find(n => n.id === noteId);
         if (note) {
           positions[noteId] = { x: note.x, y: note.y };
         }
       });
+    }
+    
+    // 加入選中的圖片
+    if (selectedImages.length > 0) {
+      selectedImages.forEach(imgId => {
+        const img = whiteboardData.images?.find(i => i.id === imgId);
+        if (img) {
+          positions[imgId] = { x: img.x, y: img.y };
+        }
+      });
+    }
+    
+    if (Object.keys(positions).length > 0) {
       setBatchDragInitialPositions(positions);
     }
-  }, [selectedNotes, whiteboardData.notes]);
+  }, [selectedNotes, selectedImages, whiteboardData.notes, whiteboardData.images]);
 
   // 批量移動
   const handleBatchMove = useCallback((deltaX: number, deltaY: number) => {
-    if (selectedNotes.length > 0) {
-      // 獲取正在移動的便利貼
+    if (selectedNotes.length > 0 || selectedImages.length > 0) {
+      // 獲取正在移動的便利貼和圖片
       const movingNotes = whiteboardData.notes.filter(note => selectedNotes.includes(note.id));
+      const movingImages = whiteboardData.images?.filter(img => selectedImages.includes(img.id)) || [];
       
       let snappedDeltaX = deltaX;
       let snappedDeltaY = deltaY;
       
       // 只在按住 Cmd 時計算對齊
-      if (isHoldingCmd) {
-        // 計算對齊
+      if (isHoldingCmd && movingNotes.length > 0) {
+        // 計算對齊（目前只對便利貼進行對齊）
         const alignmentResult = AlignmentService.calculateMultipleAlignment(
           movingNotes,
           deltaX,
@@ -514,10 +533,23 @@ const Whiteboard: React.FC = () => {
             }
           }
           return note;
+        }),
+        images: (prev.images || []).map(img => {
+          if (selectedImages.includes(img.id)) {
+            const initialPos = batchDragInitialPositions[img.id];
+            if (initialPos) {
+              return {
+                ...img,
+                x: initialPos.x + snappedDeltaX,
+                y: initialPos.y + snappedDeltaY
+              };
+            }
+          }
+          return img;
         })
       }));
     }
-  }, [selectedNotes, batchDragInitialPositions, whiteboardData.notes, isHoldingCmd]);
+  }, [selectedNotes, selectedImages, batchDragInitialPositions, whiteboardData.notes, whiteboardData.images, isHoldingCmd]);
 
   // 處理群組拖曳
   const handleGroupDrag = useCallback((groupId: string, deltaX: number, deltaY: number) => {
@@ -3923,6 +3955,8 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                   ungroupNotes(image.groupId);
                 }
               }}
+              onBatchMove={handleBatchMove}
+              onInitBatchDrag={initBatchDragPositions}
               onMouseEnter={() => setHoveredImage(image.id)}
               onMouseLeave={() => setHoveredImage(null)}
               onStartDrag={() => setIsDraggingNote(true)}

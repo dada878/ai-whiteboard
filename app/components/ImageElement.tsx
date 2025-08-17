@@ -22,6 +22,8 @@ interface ImageElementProps {
   onStartConnection?: () => void; // 開始連接
   onCreateGroup?: () => void; // 建立群組
   onUngroupImages?: () => void; // 取消群組
+  onBatchMove?: (deltaX: number, deltaY: number) => void; // 批量移動
+  onInitBatchDrag?: () => void; // 初始化批量拖曳
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   onStartDrag?: () => void;
@@ -47,6 +49,8 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
   onStartConnection,
   onCreateGroup,
   onUngroupImages,
+  onBatchMove,
+  onInitBatchDrag,
   onMouseEnter,
   onMouseLeave,
   onStartDrag,
@@ -118,6 +122,10 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
           if (onStartDrag) {
             onStartDrag();
           }
+          // 如果是多選狀態，初始化批量拖曳
+          if (isMultiSelected && onInitBatchDrag) {
+            onInitBatchDrag();
+          }
         }
         return;
       }
@@ -129,10 +137,15 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
       const deltaX = currentPos.x - startPos.x;
       const deltaY = currentPos.y - startPos.y;
       
-      // 移動圖片
-      const newX = dragState.initialImageX + deltaX;
-      const newY = dragState.initialImageY + deltaY;
-      onUpdatePosition(newX, newY);
+      // 如果是多選狀態，使用批量移動
+      if (isMultiSelected && onBatchMove) {
+        onBatchMove(deltaX, deltaY);
+      } else {
+        // 單獨移動圖片
+        const newX = dragState.initialImageX + deltaX;
+        const newY = dragState.initialImageY + deltaY;
+        onUpdatePosition(newX, newY);
+      }
     };
 
     const handleGlobalMouseUp = () => {
