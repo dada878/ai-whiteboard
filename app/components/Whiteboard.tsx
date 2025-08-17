@@ -1342,6 +1342,11 @@ const Whiteboard: React.FC = () => {
       return;
     }
     
+    // 檢查是否點擊圖片
+    if (target.closest('.image-element')) {
+      return;
+    }
+    
     // 檢查是否點擊群組 - SVG 元素需要特別處理
     const svgElement = target.closest('svg');
     if (svgElement && (target.tagName === 'rect' || target.tagName === 'text' || target.tagName === 'foreignObject')) {
@@ -1352,6 +1357,8 @@ const Whiteboard: React.FC = () => {
     // 清除所有選取狀態
     setSelectedNote(null);
     setSelectedNotes([]);
+    setSelectedImage(null);
+    setSelectedImages([]);
     setSelectedEdge(null);
     setSelectedGroup(null);
     setPreviewSelectedNotes([]);

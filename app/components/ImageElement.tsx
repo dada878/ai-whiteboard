@@ -263,7 +263,7 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
     <>
       <div
         ref={nodeRef}
-        className={`absolute select-none ${
+        className={`image-element absolute select-none ${
           (isSelected || isPreviewSelected) ? 'z-20' : 'z-10'
         } ${dragState?.isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         style={{

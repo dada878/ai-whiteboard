@@ -875,13 +875,32 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                   className="absolute -top-10 left-1/2 transform -translate-x-1/2 w-12 h-12 cursor-pointer flex items-center justify-center group"
                   onMouseDown={(e) => {
                     e.stopPropagation();
-                    onStartConnection();
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onQuickConnect) {
-                      onQuickConnect('top');
-                    }
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    let isDragging = false;
+                    
+                    const handleMouseMove = (moveEvent: MouseEvent) => {
+                      const dx = moveEvent.clientX - startX;
+                      const dy = moveEvent.clientY - startY;
+                      if (Math.hypot(dx, dy) > 5) {
+                        isDragging = true;
+                        onStartConnection();
+                        document.removeEventListener('mousemove', handleMouseMove);
+                        document.removeEventListener('mouseup', handleMouseUp);
+                      }
+                    };
+                    
+                    const handleMouseUp = () => {
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                      
+                      if (!isDragging && onQuickConnect) {
+                        onQuickConnect('top');
+                      }
+                    };
+                    
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
                   }}
                   title="點擊快速連接 / 拖曳自由連接"
                 >
@@ -893,13 +912,32 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                   className="absolute -right-10 top-1/2 transform -translate-y-1/2 w-12 h-12 cursor-pointer flex items-center justify-center group"
                   onMouseDown={(e) => {
                     e.stopPropagation();
-                    onStartConnection();
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onQuickConnect) {
-                      onQuickConnect('right');
-                    }
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    let isDragging = false;
+                    
+                    const handleMouseMove = (moveEvent: MouseEvent) => {
+                      const dx = moveEvent.clientX - startX;
+                      const dy = moveEvent.clientY - startY;
+                      if (Math.hypot(dx, dy) > 5) {
+                        isDragging = true;
+                        onStartConnection();
+                        document.removeEventListener('mousemove', handleMouseMove);
+                        document.removeEventListener('mouseup', handleMouseUp);
+                      }
+                    };
+                    
+                    const handleMouseUp = () => {
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                      
+                      if (!isDragging && onQuickConnect) {
+                        onQuickConnect('right');
+                      }
+                    };
+                    
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
                   }}
                   title="點擊快速連接 / 拖曳自由連接"
                 >
@@ -911,13 +949,32 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                   className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 w-12 h-12 cursor-pointer flex items-center justify-center group"
                   onMouseDown={(e) => {
                     e.stopPropagation();
-                    onStartConnection();
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onQuickConnect) {
-                      onQuickConnect('bottom');
-                    }
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    let isDragging = false;
+                    
+                    const handleMouseMove = (moveEvent: MouseEvent) => {
+                      const dx = moveEvent.clientX - startX;
+                      const dy = moveEvent.clientY - startY;
+                      if (Math.hypot(dx, dy) > 5) {
+                        isDragging = true;
+                        onStartConnection();
+                        document.removeEventListener('mousemove', handleMouseMove);
+                        document.removeEventListener('mouseup', handleMouseUp);
+                      }
+                    };
+                    
+                    const handleMouseUp = () => {
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                      
+                      if (!isDragging && onQuickConnect) {
+                        onQuickConnect('bottom');
+                      }
+                    };
+                    
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
                   }}
                   title="點擊快速連接 / 拖曳自由連接"
                 >
@@ -929,13 +986,32 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                   className="absolute -left-10 top-1/2 transform -translate-y-1/2 w-12 h-12 cursor-pointer flex items-center justify-center group"
                   onMouseDown={(e) => {
                     e.stopPropagation();
-                    onStartConnection();
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onQuickConnect) {
-                      onQuickConnect('left');
-                    }
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    let isDragging = false;
+                    
+                    const handleMouseMove = (moveEvent: MouseEvent) => {
+                      const dx = moveEvent.clientX - startX;
+                      const dy = moveEvent.clientY - startY;
+                      if (Math.hypot(dx, dy) > 5) {
+                        isDragging = true;
+                        onStartConnection();
+                        document.removeEventListener('mousemove', handleMouseMove);
+                        document.removeEventListener('mouseup', handleMouseUp);
+                      }
+                    };
+                    
+                    const handleMouseUp = () => {
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                      
+                      if (!isDragging && onQuickConnect) {
+                        onQuickConnect('left');
+                      }
+                    };
+                    
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
                   }}
                   title="點擊快速連接 / 拖曳自由連接"
                 >
