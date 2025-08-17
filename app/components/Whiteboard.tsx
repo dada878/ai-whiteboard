@@ -1097,18 +1097,38 @@ const Whiteboard: React.FC = () => {
           
           // 初始化歷史記錄
           setHistory([localData]);
-          setHistoryIndex(0);
-        } else {
-          // 沒有資料時，初始化空的歷史記錄
-          const initialData = { notes: [], edges: [], groups: [], images: [] };
-          setHistory([initialData]);
-          setHistoryIndex(0);
+            setHistoryIndex(0);
+          } else {
+            console.log('No Firebase data found for project:', projectId);
+            // 初始化空白狀態
+            const emptyData = {
+              notes: [],
+              edges: [],
+              groups: [],
+              images: []
+            };
+            setWhiteboardData(emptyData);
+            setHistory([emptyData]);
+            setHistoryIndex(0);
+          }
         }
+      } catch (error) {
+        console.error('Failed to load project data:', error);
+        // 初始化空白狀態
+        const emptyData = {
+          notes: [],
+          edges: [],
+          groups: [],
+          images: []
+        };
+        setWhiteboardData(emptyData);
+        setHistory([emptyData]);
+        setHistoryIndex(0);
       }
     };
     
     loadProjectData();
-  }, [user?.id]);
+  }, [user]);
 
   // 處理雲端同步切換
   const handleToggleCloudSync = useCallback(async (enabled: boolean) => {
@@ -1266,17 +1286,14 @@ const Whiteboard: React.FC = () => {
     const saveTimer = setTimeout(async () => {
       const viewport = { zoomLevel, panOffset };
       
-      // 儲存到本地
-      ProjectService.saveProjectData(currentProjectId, whiteboardData, viewport);
-      
-      // 如果啟用雲端同步且使用者已登入，同步到雲端
-      if (cloudSyncEnabled && user?.id) {
+      // 直接儲存到 Firebase
+      if (user?.id) {
         try {
-          await SyncService.saveProjectData(user.id, currentProjectId, whiteboardData);
+          await ProjectService.saveProjectData(currentProjectId, whiteboardData, viewport);
           // 更新同步狀態
           setSyncStatus(SyncService.getSyncStatus());
         } catch (error) {
-          console.error('Failed to sync to cloud:', error);
+          console.error('Failed to save to Firebase:', error);
           setSyncStatus(SyncService.getSyncStatus());
         }
       }
@@ -3056,10 +3073,14 @@ const Whiteboard: React.FC = () => {
           groups: prev.groups || []
         };
         
-        // 立即儲存到本地以防止資料遺失
-        if (currentProjectId) {
-          setTimeout(() => {
-            ProjectService.saveProjectData(currentProjectId, newData, { zoomLevel, panOffset });
+        // 立即儲存到 Firebase 以防止資料遺失
+        if (currentProjectId && user?.id) {
+          setTimeout(async () => {
+            try {
+              await ProjectService.saveProjectData(currentProjectId, newData, { zoomLevel, panOffset });
+            } catch (error) {
+              console.error('Failed to save brainstorm result:', error);
+            }
           }, 100);
         }
         
@@ -3102,18 +3123,15 @@ const Whiteboard: React.FC = () => {
       setTimeout(() => {
         if (user?.id && currentProjectId) {
           // 重新啟用前先同步到雲端
-          const currentData = ProjectService.loadProjectData(currentProjectId);
-          if (currentData) {
-            SyncService.saveProjectData(user.id, currentProjectId, currentData).then(() => {
+          try {
+            const currentData = await ProjectService.loadProjectData(currentProjectId);
+            if (currentData) {
               SyncService.enableRealtimeSync(currentProjectId, user.id, (data) => {
                 setWhiteboardData(data);
               });
-            }).catch(() => {
-              // 即使同步失敗也要重新啟用即時同步
-              SyncService.enableRealtimeSync(currentProjectId, user.id, (data) => {
-                setWhiteboardData(data);
-              });
-            });
+            }
+          } catch (error) {
+            console.error('Failed to reload project data:', error);
           }
         }
       }, 3000); // 增加到3秒
@@ -4282,10 +4300,12 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
       setConnectingFrom(null);
       
       // 清空當前專案的資料
-      if (currentProjectId) {
+      if (currentProjectId && user?.id) {
         ProjectService.saveProjectData(currentProjectId, emptyData, {
           zoomLevel,
           panOffset
+        }).catch(error => {
+          console.error('Failed to save cleared data:', error);
         });
       }
       
@@ -5121,40 +5141,45 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
       <SidePanel 
         currentProject={currentProject}
         syncStatus={syncStatus}
-        onProjectSelect={(projectId) => {
+        onProjectSelect={async (projectId) => {
           // 切換專案
-          const project = ProjectService.getProject(projectId);
-          if (project) {
-            // 儲存當前專案的資料
-            if (currentProjectId) {
-              ProjectService.saveProjectData(currentProjectId, whiteboardData);
+          try {
+            const project = await ProjectService.getProject(projectId);
+            if (project) {
+              // 儲存當前專案的資料
+              if (currentProjectId && user?.id) {
+                await ProjectService.saveProjectData(currentProjectId, whiteboardData);
+              }
+              
+              // 切換到新專案
+              ProjectService.setCurrentProject(projectId);
+              setCurrentProjectId(projectId);
+              setCurrentProject(project);
+              
+              // Google Analytics 追蹤
+              gtag.trackProjectEvent('open', projectId, {
+                user_id: user?.id,
+                project_name: project.name,
+                notes_count: whiteboardData.notes.length
+              });
+              
+              // 載入新專案的資料
+              const projectData = await ProjectService.loadProjectData(projectId);
+              if (projectData) {
+                setWhiteboardData(projectData);
+                // 重置歷史記錄
+                setHistory([projectData]);
+                setHistoryIndex(0);
+              } else {
+                const emptyData = { notes: [], edges: [], groups: [], images: [] };
+                setWhiteboardData(emptyData);
+                setHistory([emptyData]);
+                setHistoryIndex(0);
+              }
             }
-            
-            // 切換到新專案
-            ProjectService.setCurrentProject(projectId);
-            setCurrentProjectId(projectId);
-            setCurrentProject(project);
-            
-            // Google Analytics 追蹤
-            gtag.trackProjectEvent('open', projectId, {
-              user_id: user?.id,
-              project_name: project.name,
-              notes_count: whiteboardData.notes.length
-            });
-            
-            // 載入新專案的資料
-            const projectData = ProjectService.loadProjectData(projectId);
-            if (projectData) {
-              setWhiteboardData(projectData);
-              // 重置歷史記錄
-              setHistory([projectData]);
-              setHistoryIndex(0);
-            } else {
-              const emptyData = { notes: [], edges: [], groups: [], images: [] };
-              setWhiteboardData(emptyData);
-              setHistory([emptyData]);
-              setHistoryIndex(0);
-            }
+          } catch (error) {
+            console.error('Failed to switch project:', error);
+          }
             
             // 重置視圖
             setZoomLevel(1);
@@ -5185,19 +5210,20 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
           setHistory([{ notes: [], edges: [], groups: [] }]);
           setHistoryIndex(0);
         }}
-        onProjectDelete={(projectId) => {
+        onProjectDelete={async (projectId) => {
           // 刪除專案
-          ProjectService.deleteProject(projectId);
-          
-          // 如果刪除的是當前專案，切換到第一個專案
-          if (projectId === currentProjectId) {
-            const projects = ProjectService.getAllProjects();
+          try {
+            await ProjectService.deleteProject(projectId);
+            
+            // 如果刪除的是當前專案，切換到第一個專案
+            if (projectId === currentProjectId) {
+              const projects = await ProjectService.getAllProjects();
             if (projects.length > 0) {
               const firstProject = projects[0];
               setCurrentProjectId(firstProject.id);
               setCurrentProject(firstProject);
               
-              const projectData = ProjectService.loadProjectData(firstProject.id);
+              const projectData = await ProjectService.loadProjectData(firstProject.id);
               if (projectData) {
                 setWhiteboardData(projectData);
               } else {
@@ -5205,12 +5231,13 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
               }
             } else {
               // 沒有專案了，創建預設專案
-              ProjectService.createProject('我的白板', '預設專案').then(defaultProject => {
-                setCurrentProjectId(defaultProject.id);
-                setCurrentProject(defaultProject);
-                setWhiteboardData({ notes: [], edges: [], groups: [], images: [] });
-              });
+              const defaultProject = await ProjectService.createProject('我的白板', '預設專案');
+              setCurrentProjectId(defaultProject.id);
+              setCurrentProject(defaultProject);
+              setWhiteboardData({ notes: [], edges: [], groups: [], images: [] });
             }
+          } catch (error) {
+            console.error('Failed to delete project:', error);
           }
         }}
         cloudSyncEnabled={cloudSyncEnabled}
@@ -5441,28 +5468,36 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
         isOpen={showProjectDialog}
         onClose={() => setShowProjectDialog(false)}
         onSelectProject={async (projectId) => {
-          // 切換專案
-          ProjectService.setCurrentProject(projectId);
-          setCurrentProjectId(projectId);
-          
-          // 載入新專案資料
-          const projectData = ProjectService.loadProjectData(projectId);
+          try {
+            // 切換專案
+            ProjectService.setCurrentProject(projectId);
+            setCurrentProjectId(projectId);
             
-          if (projectData) {
-            setWhiteboardData(projectData);
-            if (projectData.viewport) {
-              setZoomLevel(projectData.viewport.zoomLevel);
-              setPanOffset(projectData.viewport.panOffset);
+            // 載入新專案資料
+            const projectData = await ProjectService.loadProjectData(projectId);
+              
+            if (projectData) {
+              setWhiteboardData(projectData);
+              if (projectData.viewport) {
+                setZoomLevel(projectData.viewport.zoomLevel);
+                setPanOffset(projectData.viewport.panOffset);
+              }
+              // 重置歷史記錄
+              setHistory([projectData]);
+              setHistoryIndex(0);
             }
-            // 重置歷史記錄
-            setHistory([projectData]);
-            setHistoryIndex(0);
+          } catch (error) {
+            console.error('Failed to switch project:', error);
           }
           
           // 更新當前專案資訊
-          const projects = ProjectService.getAllProjects();
-          const project = projects.find(p => p.id === projectId);
-          setCurrentProject(project || null);
+          try {
+            const projects = await ProjectService.getAllProjects();
+            const project = projects.find(p => p.id === projectId);
+            setCurrentProject(project || null);
+          } catch (error) {
+            console.error('Failed to update current project:', error);
+          }
           
           setShowProjectDialog(false);
           

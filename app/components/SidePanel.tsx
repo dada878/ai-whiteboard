@@ -44,10 +44,19 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const loadProjects = async () => {
     setLoading(true);
     try {
-      const localProjects = ProjectService.getAllProjects();
-      setProjects(localProjects);
+      if (user?.id) {
+        // 設定當前使用者 ID
+        ProjectService.setUserId(user.id);
+        // 從 Firebase 載入專案
+        const firebaseProjects = await ProjectService.getAllProjects();
+        setProjects(firebaseProjects);
+      } else {
+        // 未登入時清空專案列表
+        setProjects([]);
+      }
     } catch (error) {
       console.error('載入專案失敗:', error);
+      setProjects([]);
     } finally {
       setLoading(false);
     }
