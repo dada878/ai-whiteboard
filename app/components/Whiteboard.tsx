@@ -1087,16 +1087,16 @@ const Whiteboard: React.FC = () => {
           }
           
           setWhiteboardData(localData);
-          setLastSaveTime(new Date());
-          
-          // 恢復視窗狀態
-          if (localData.viewport) {
-            setZoomLevel(localData.viewport.zoomLevel);
-            setPanOffset(localData.viewport.panOffset);
-          }
-          
-          // 初始化歷史記錄
-          setHistory([localData]);
+            setLastSaveTime(new Date());
+            
+            // 恢復視窗狀態
+            if (projectData.viewport) {
+              setZoomLevel(projectData.viewport.zoomLevel);
+              setPanOffset(projectData.viewport.panOffset);
+            }
+            
+            // 初始化歷史記錄
+            setHistory([projectData]);
             setHistoryIndex(0);
           } else {
             console.log('No Firebase data found for project:', projectId);

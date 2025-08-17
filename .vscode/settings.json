@@ -1,0 +1,7 @@
+{
+  "terminal.integrated.env.osx": {
+    "PATH": "/Users/dada878/.nvm/versions/node/v20.10.0/bin:${env:PATH}"
+  },
+  "git.path": "/usr/bin/git",
+  "git.terminalAuthentication": false
+}
