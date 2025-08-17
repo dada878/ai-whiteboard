@@ -429,16 +429,6 @@ const ImageElementComponent: React.FC<ImageElementProps> = ({
             </>
           )}
 
-          {/* Filename badge */}
-          {isSelected && image.filename && (
-            <div className={`absolute -top-8 left-0 px-2 py-1 rounded text-xs truncate max-w-full ${
-              isDarkMode 
-                ? 'bg-gray-800 text-gray-300' 
-                : 'bg-gray-900 text-white'
-            }`}>
-              {image.filename}
-            </div>
-          )}
       </div>
 
       {/* Context Menu */}
