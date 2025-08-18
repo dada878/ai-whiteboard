@@ -59,7 +59,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-32">
           <div className="text-center">
             <h1 className="text-4xl sm:text-6xl font-bold mb-6 bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-              讓思維自由流動
+              ThinkBoard, Think Better.
             </h1>
             <p className={`text-xl sm:text-2xl mb-8 max-w-3xl mx-auto ${
               isDarkMode ? 'text-gray-300' : 'text-gray-600'

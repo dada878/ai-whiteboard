@@ -159,13 +159,254 @@ export const getWhiteboardOverviewTool: ChatCompletionTool = {
   }
 };
 
+// 6. 創建便利貼
+export const createNoteTool: ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'create_note',
+    description: '在白板上創建新的便利貼。可以指定位置、內容、顏色等屬性。',
+    parameters: {
+      type: 'object',
+      properties: {
+        content: {
+          type: 'string',
+          description: '便利貼的文字內容',
+          minLength: 1,
+          maxLength: 500
+        },
+        x: {
+          type: 'number',
+          description: 'X座標位置（建議範圍：-2000 到 2000）。如果不指定，會自動選擇合適位置'
+        },
+        y: {
+          type: 'number',
+          description: 'Y座標位置（建議範圍：-2000 到 2000）。如果不指定，會自動選擇合適位置'
+        },
+        color: {
+          type: 'string',
+          enum: ['yellow', 'pink', 'blue', 'green', 'orange', 'purple', 'gray'],
+          description: '便利貼顏色',
+          default: 'yellow'
+        },
+        group_id: {
+          type: 'string',
+          description: '將便利貼加入指定群組ID（選填）'
+        }
+      },
+      required: ['content']
+    }
+  }
+};
+
+// 7. 建立連結
+export const createEdgeTool: ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'create_edge',
+    description: '在兩個便利貼之間建立箭頭連結，表示它們之間的關係或流程。',
+    parameters: {
+      type: 'object',
+      properties: {
+        from_note_id: {
+          type: 'string',
+          description: '起始便利貼的ID'
+        },
+        to_note_id: {
+          type: 'string',
+          description: '目標便利貼的ID'
+        }
+      },
+      required: ['from_note_id', 'to_note_id']
+    }
+  }
+};
+
+// 8. 創建群組
+export const createGroupTool: ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'create_group',
+    description: '創建新的群組來組織相關的便利貼。可以指定群組名稱、顏色，並可選擇要加入群組的便利貼。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: '群組名稱',
+          minLength: 1,
+          maxLength: 100
+        },
+        color: {
+          type: 'string',
+          enum: ['yellow', 'pink', 'blue', 'green', 'orange', 'purple', 'gray'],
+          description: '群組顏色',
+          default: 'blue'
+        },
+        note_ids: {
+          type: 'array',
+          items: {
+            type: 'string'
+          },
+          description: '要加入群組的便利貼ID列表（選填）',
+          maxItems: 50
+        },
+        parent_group_id: {
+          type: 'string',
+          description: '父群組ID，用於創建嵌套群組（選填）'
+        }
+      },
+      required: ['name']
+    }
+  }
+};
+
+// 9. 移動便利貼
+export const moveNoteTool: ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'move_note',
+    description: '移動便利貼到新的位置。可以精確指定座標或相對移動。',
+    parameters: {
+      type: 'object',
+      properties: {
+        note_id: {
+          type: 'string',
+          description: '要移動的便利貼ID'
+        },
+        x: {
+          type: 'number',
+          description: '新的X座標位置'
+        },
+        y: {
+          type: 'number',
+          description: '新的Y座標位置'
+        },
+        relative: {
+          type: 'boolean',
+          description: '是否為相對移動（true=相對當前位置，false=絕對位置）',
+          default: false
+        }
+      },
+      required: ['note_id', 'x', 'y']
+    }
+  }
+};
+
+// 10. 更新便利貼
+export const updateNoteTool: ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'update_note',
+    description: '更新便利貼的內容、顏色或其他屬性。',
+    parameters: {
+      type: 'object',
+      properties: {
+        note_id: {
+          type: 'string',
+          description: '要更新的便利貼ID'
+        },
+        content: {
+          type: 'string',
+          description: '新的文字內容（選填）',
+          minLength: 1,
+          maxLength: 500
+        },
+        color: {
+          type: 'string',
+          enum: ['yellow', 'pink', 'blue', 'green', 'orange', 'purple', 'gray'],
+          description: '新的顏色（選填）'
+        }
+      },
+      required: ['note_id']
+    }
+  }
+};
+
+// 11. 將便利貼加入群組
+export const addNoteToGroupTool: ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'add_note_to_group',
+    description: '將現有的便利貼加入到指定群組中。',
+    parameters: {
+      type: 'object',
+      properties: {
+        note_id: {
+          type: 'string',
+          description: '要加入群組的便利貼ID'
+        },
+        group_id: {
+          type: 'string',
+          description: '目標群組ID'
+        }
+      },
+      required: ['note_id', 'group_id']
+    }
+  }
+};
+
+// 12. 從現有節點創建相關便利貼 (智能創建)
+export const createConnectedNoteTool: ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'create_connected_note',
+    description: '從現有的便利貼延伸創建新的相關便利貼。新便利貼會自動放置在合適的位置，並自動建立連接。這是最直覺的創建方式，適合用於腦力激盪、延伸想法等場景。',
+    parameters: {
+      type: 'object',
+      properties: {
+        source_note_id: {
+          type: 'string',
+          description: '來源便利貼的ID（新便利貼將從此節點延伸出來）'
+        },
+        content: {
+          type: 'string',
+          description: '新便利貼的文字內容',
+          minLength: 1,
+          maxLength: 500
+        },
+        relationship: {
+          type: 'string',
+          enum: ['leads_to', 'derives_from', 'relates_to'],
+          description: '與來源便利貼的關係：leads_to(導向)、derives_from(衍生自)、relates_to(相關)',
+          default: 'leads_to'
+        },
+        direction: {
+          type: 'string',
+          enum: ['right', 'left', 'up', 'down', 'auto'],
+          description: '新便利貼相對於來源的方向。auto會自動選擇最佳位置',
+          default: 'auto'
+        },
+        color: {
+          type: 'string',
+          enum: ['yellow', 'pink', 'blue', 'green', 'orange', 'purple', 'gray', 'auto'],
+          description: '便利貼顏色。auto會根據關係類型自動選擇',
+          default: 'auto'
+        },
+        distance: {
+          type: 'number',
+          description: '與來源便利貼的距離（像素）',
+          default: 250,
+          minimum: 150,
+          maximum: 500
+        }
+      },
+      required: ['source_note_id', 'content']
+    }
+  }
+};
+
 // 匯出所有工具
 export const aiAgentTools: ChatCompletionTool[] = [
+  // 查詢與分析工具
   searchNotesTool,
   getNoteByIdTool,
   searchGroupsTool,
   getGroupByIdTool,
-  getWhiteboardOverviewTool
+  getWhiteboardOverviewTool,
+  
+  // 創建工具 (核心功能)
+  createConnectedNoteTool,  // 🌟 唯一的創建方式：從現有節點延伸
+  createEdgeTool            // 🔗 建立連接
 ];
 
 // 工具返回值的類型定義
@@ -255,4 +496,104 @@ export interface WhiteboardOverviewResponse {
     groupName?: string;
   }>;
   summary: string;
+}
+
+// 創建/修改操作的返回類型
+export interface CreateNoteResponse {
+  success: boolean;
+  note?: {
+    id: string;
+    content: string;
+    x: number;
+    y: number;
+    color: string;
+    groupId?: string;
+  };
+  error?: string;
+}
+
+export interface CreateEdgeResponse {
+  success: boolean;
+  edge?: {
+    id: string;
+    from: string;
+    to: string;
+    fromNoteContent: string;
+    toNoteContent: string;
+  };
+  error?: string;
+}
+
+export interface CreateGroupResponse {
+  success: boolean;
+  group?: {
+    id: string;
+    name: string;
+    color: string;
+    noteCount: number;
+    addedNotes: string[];
+  };
+  error?: string;
+}
+
+export interface MoveNoteResponse {
+  success: boolean;
+  note?: {
+    id: string;
+    content: string;
+    oldPosition: { x: number; y: number };
+    newPosition: { x: number; y: number };
+  };
+  error?: string;
+}
+
+export interface UpdateNoteResponse {
+  success: boolean;
+  note?: {
+    id: string;
+    oldContent?: string;
+    newContent?: string;
+    oldColor?: string;
+    newColor?: string;
+  };
+  error?: string;
+}
+
+export interface AddNoteToGroupResponse {
+  success: boolean;
+  note?: {
+    id: string;
+    content: string;
+    groupId: string;
+    groupName: string;
+  };
+  error?: string;
+}
+
+export interface CreateConnectedNoteResponse {
+  success: boolean;
+  newNote?: {
+    id: string;
+    content: string;
+    x: number;
+    y: number;
+    color: string;
+    groupId?: string;
+  };
+  connection?: {
+    id: string;
+    from: string;
+    to: string;
+    relationship: string;
+  };
+  sourceNote?: {
+    id: string;
+    content: string;
+  };
+  positioning?: {
+    direction: string;
+    distance: number;
+    calculatedPosition: { x: number; y: number };
+  };
+  error?: string;
 }

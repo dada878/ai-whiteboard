@@ -19,6 +19,7 @@ interface SidePanelProps {
   cloudSyncEnabled?: boolean;
   onToggleCloudSync?: (enabled: boolean) => void;
   whiteboardData?: WhiteboardData;
+  onWhiteboardUpdate?: (updater: WhiteboardData | ((prev: WhiteboardData) => WhiteboardData)) => void;
 }
 
 const SidePanel: React.FC<SidePanelProps> = ({ 
@@ -28,7 +29,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onProjectCreate,
   onProjectDelete,
   cloudSyncEnabled = false,
-  whiteboardData
+  whiteboardData,
+  onWhiteboardUpdate
 }) => {
   const { isDarkMode } = useTheme();
   const { user } = useAuth();
@@ -617,6 +619,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
                     whiteboardData={whiteboardData} 
                     preloadedQuestions={quickQuestions}
                     isLoadingQuestions={isLoadingQuestions}
+                    onWhiteboardUpdate={onWhiteboardUpdate}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full">

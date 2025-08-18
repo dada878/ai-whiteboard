@@ -424,7 +424,10 @@ export function useAIAgentStream(
                       type: 'whiteboard_summary_ready',
                       title: '✅ 白板摘要',
                       description: '已完成白板內容的全面分析',
-                      data: event.summary
+                      data: {
+                        summary: event.summary,
+                        prompts: event.prompts || []
+                      }
                     }
                   };
                   setMessages(prev => [...prev, whiteboardSummaryMsg]);
@@ -501,6 +504,26 @@ export function useAIAgentStream(
                     }
                   };
                   setMessages(prev => [...prev, reflectionCompleteMsg]);
+                  break;
+                  
+                case 'stop_reason':
+                  // 顯示停止原因
+                  const stopReasonMsg: ChatMessage = {
+                    id: `process_${Date.now()}_stop_reason`,
+                    role: 'process',
+                    content: event.description || '探索階段結束',
+                    timestamp: new Date(),
+                    processInfo: {
+                      type: 'stop_reason',
+                      title: '🏁 停止探索',
+                      description: event.description,
+                      data: {
+                        reason: event.reason,
+                        toolCallCount: event.toolCallCount
+                      }
+                    }
+                  };
+                  setMessages(prev => [...prev, stopReasonMsg]);
                   break;
                   
                 case 'done':

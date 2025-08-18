@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Trash2, Bot, User, Loader2, Sparkles, Wrench, CheckCircle, AlertCircle, Search, FileText, FolderOpen, Eye, Brain, ChevronDown, ChevronRight } from 'lucide-react';
+import { Send, Trash2, Bot, User, Loader2, Sparkles, Wrench, CheckCircle, AlertCircle, Search, FileText, FolderOpen, Eye, Brain, ChevronDown, ChevronRight, Plus, Link, StopCircle } from 'lucide-react';
 import { useAIAgentStream, ChatMessage, ToolCall, ProcessInfo } from '@/app/hooks/useAIAgentStream';
 import { WhiteboardData } from '@/app/types';
 import ReactMarkdown from 'react-markdown';
@@ -12,6 +12,7 @@ interface AIChatPanelStreamProps {
   // 從上層元件傳遞的問題狀態（避免重複載入）
   preloadedQuestions?: string[];
   isLoadingQuestions?: boolean;
+  onWhiteboardUpdate?: (updater: WhiteboardData | ((prev: WhiteboardData) => WhiteboardData)) => void;
 }
 
 // 工具圖標對應
@@ -20,7 +21,10 @@ const toolIcons: Record<string, React.ElementType> = {
   'get_note_by_id': FileText,
   'search_groups': FolderOpen,
   'get_group_by_id': FolderOpen,
-  'get_whiteboard_overview': Eye
+  'get_whiteboard_overview': Eye,
+  'create_note': Plus,
+  'create_connected_note': Plus,
+  'create_edge': Link
 };
 
 // 工具名稱對應
@@ -29,7 +33,10 @@ const toolNames: Record<string, string> = {
   'get_note_by_id': '查詢便利貼',
   'search_groups': '搜尋群組',
   'get_group_by_id': '查詢群組',
-  'get_whiteboard_overview': '白板概覽'
+  'get_whiteboard_overview': '白板概覽',
+  'create_note': '創建便利貼',
+  'create_connected_note': '創建連接便利貼',
+  'create_edge': '創建連線'
 };
 
 // Markdown 內容渲染組件（強制亮色模式）
@@ -127,7 +134,8 @@ function MarkdownContent({ content, className }: { content: string; className?: 
 export function AIChatPanelStream({ 
   whiteboardData, 
   preloadedQuestions, 
-  isLoadingQuestions: externalIsLoadingQuestions 
+  isLoadingQuestions: externalIsLoadingQuestions,
+  onWhiteboardUpdate
 }: AIChatPanelStreamProps) {
   const [input, setInput] = useState('');
   
@@ -151,6 +159,83 @@ export function AIChatPanelStream({
     persistKey: 'ai_assistant_stream' // 使用固定的 key 來持久化對話
   });
 
+  // 監聽創建工具的完成，並更新白板狀態
+  useEffect(() => {
+    if (!onWhiteboardUpdate) return;
+
+    // 檢查最新的訊息中是否有已完成的創建工具
+    const latestMessage = messages[messages.length - 1];
+    if (!latestMessage?.toolCalls) return;
+
+    latestMessage.toolCalls.forEach(toolCall => {
+      console.log('[AI創建工具] 檢查工具調用:', toolCall.tool, 'status:', toolCall.status);
+      
+      if (toolCall.status !== 'completed' || !toolCall.result) {
+        console.log('[AI創建工具] 工具未完成或無結果，跳過');
+        return;
+      }
+
+      console.log('[AI創建工具] 工具結果:', toolCall.result);
+
+      // 處理創建便利貼工具
+      if (toolCall.tool === 'create_note' && toolCall.result.success) {
+        // 檢查兩種可能的結構
+        const newNote = toolCall.result.note || toolCall.result.newNote;
+        console.log('[AI創建工具] create_note - 找到便利貼:', newNote);
+        
+        if (newNote) {
+          console.log('[AI創建工具] 添加新便利貼到白板:', newNote.id);
+          onWhiteboardUpdate(prev => ({
+            ...prev,
+            notes: [...prev.notes, newNote]
+          }));
+        }
+      }
+
+      // 處理創建連接便利貼工具
+      if (toolCall.tool === 'create_connected_note' && toolCall.result.success) {
+        // 檢查兩種可能的結構
+        const newNote = toolCall.result.note || toolCall.result.newNote;
+        const newEdge = toolCall.result.edge || toolCall.result.connection;
+        
+        console.log('[AI創建工具] create_connected_note - 便利貼:', newNote, '連線:', newEdge);
+        
+        if (newNote) {
+          console.log('[AI創建工具] 添加連接便利貼到白板:', newNote.id, '連線:', newEdge?.id);
+          onWhiteboardUpdate(prev => {
+            const updatedData = {
+              ...prev,
+              notes: [...prev.notes, newNote]
+            };
+            
+            // 如果有連線，也添加連線
+            if (newEdge) {
+              updatedData.edges = [...prev.edges, newEdge];
+            }
+            
+            console.log('[AI創建工具] 更新後的白板資料 - 便利貼數量:', updatedData.notes.length, '連線數量:', updatedData.edges.length);
+            return updatedData;
+          });
+        }
+      }
+
+      // 處理創建連線工具
+      if (toolCall.tool === 'create_edge' && toolCall.result.success) {
+        // 檢查兩種可能的結構
+        const newEdge = toolCall.result.edge || toolCall.result.connection;
+        console.log('[AI創建工具] create_edge - 找到連線:', newEdge);
+        
+        if (newEdge) {
+          console.log('[AI創建工具] 添加新連線到白板:', newEdge.id);
+          onWhiteboardUpdate(prev => ({
+            ...prev,
+            edges: [...prev.edges, newEdge]
+          }));
+        }
+      }
+    });
+  }, [messages, onWhiteboardUpdate]);
+
   // 自動滾動到底部
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -163,7 +248,15 @@ export function AIChatPanelStream({
   // 處理提交
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    
+    // 如果正在載入，則停止請求
+    if (isLoading) {
+      cancelRequest();
+      return;
+    }
+    
+    // 否則發送新訊息
+    if (!input.trim()) return;
 
     const userInput = input;
     setInput('');
@@ -281,11 +374,16 @@ export function AIChatPanelStream({
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim()}
-            className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center min-w-[44px]"
+            disabled={!isLoading && !input.trim()}
+            className={`px-3 py-2 rounded-md transition-colors flex items-center justify-center min-w-[44px] ${
+              isLoading 
+                ? 'bg-red-500 hover:bg-red-600 text-white' 
+                : 'bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed'
+            }`}
+            title={isLoading ? '停止 AI 回應' : '發送訊息'}
           >
             {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <StopCircle className="w-4 h-4" />
             ) : (
               <Send className="w-4 h-4" />
             )}
@@ -605,6 +703,13 @@ function ProcessMessageDisplay({ message }: { message: ChatMessage }) {
           borderColor: 'border-blue-200',
           iconColor: 'text-blue-600'
         };
+      case 'stop_reason':
+        return { 
+          icon: StopCircle, 
+          bgColor: 'bg-amber-50', 
+          borderColor: 'border-amber-200',
+          iconColor: 'text-amber-600'
+        };
       default:
         return { 
           icon: Wrench, 
@@ -757,9 +862,10 @@ function ProcessMessageDisplay({ message }: { message: ChatMessage }) {
             <>
               <div className="mt-2 p-3 bg-white rounded border border-gray-200">
                 <div className="font-medium text-gray-700  mb-2">白板內容概覽</div>
-                <div className="text-sm text-gray-600  whitespace-pre-wrap">
-                  {processInfo.data.summary || processInfo.data}
-                </div>
+                <MarkdownContent 
+                  content={processInfo.data.summary || processInfo.data}
+                  className="text-sm"
+                />
               </div>
               
               {/* 顯示 Prompts */}
@@ -774,9 +880,10 @@ function ProcessMessageDisplay({ message }: { message: ChatMessage }) {
             <>
               <div className="mt-2 p-3 bg-white rounded border border-gray-200">
                 <div className="font-medium text-gray-700  mb-2">💭 我的思考過程</div>
-                <div className="text-sm text-gray-600  whitespace-pre-wrap italic">
-                  {(typeof processInfo.data === 'object' && processInfo.data.analysis) ? processInfo.data.analysis : processInfo.data}
-                </div>
+                <MarkdownContent 
+                  content={(typeof processInfo.data === 'object' && processInfo.data.analysis) ? processInfo.data.analysis : processInfo.data}
+                  className="text-sm italic"
+                />
               </div>
               
               {/* 顯示意圖分析 Prompt */}
@@ -790,9 +897,10 @@ function ProcessMessageDisplay({ message }: { message: ChatMessage }) {
           {processInfo.type === 'action_plan_ready' && processInfo.data && (
             <div className="mt-2 p-3 bg-white rounded border border-gray-200">
               <div className="font-medium text-gray-700  mb-2">🎯 行動計劃</div>
-              <div className="text-sm text-gray-600  whitespace-pre-wrap">
-                {processInfo.data}
-              </div>
+              <MarkdownContent 
+                content={processInfo.data}
+                className="text-sm"
+              />
             </div>
           )}
           
@@ -801,9 +909,10 @@ function ProcessMessageDisplay({ message }: { message: ChatMessage }) {
             <>
               <div className="mt-2 p-3 bg-white rounded border border-gray-200">
                 <div className="font-medium text-gray-700  mb-2">🤔 我的反思</div>
-                <div className="text-sm text-gray-600  whitespace-pre-wrap italic">
-                  {typeof processInfo.data === 'string' ? processInfo.data : processInfo.data.reflection}
-                </div>
+                <MarkdownContent 
+                  content={typeof processInfo.data === 'string' ? processInfo.data : processInfo.data.reflection}
+                  className="text-sm italic"
+                />
               </div>
               
               {/* 顯示反思 Prompt（如果有） */}
@@ -811,6 +920,41 @@ function ProcessMessageDisplay({ message }: { message: ChatMessage }) {
                 <PromptDisplay prompts={[processInfo.data.prompt]} />
               )}
             </>
+          )}
+          
+          {/* 特殊處理停止原因 */}
+          {processInfo.type === 'stop_reason' && processInfo.data && (
+            <div className="mt-2 p-3 bg-white rounded border border-gray-200">
+              <div className="font-medium text-gray-700 mb-2">🏁 停止探索原因</div>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-600">原因類型：</span>
+                  <span className={`px-2 py-0.5 rounded text-xs ${
+                    processInfo.data.reason === 'max_tools_reached' 
+                      ? 'bg-red-100 text-red-700'
+                      : processInfo.data.reason === 'sufficient_information'
+                      ? 'bg-green-100 text-green-700'
+                      : processInfo.data.reason === 'no_tools_needed'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {processInfo.data.reason === 'max_tools_reached' && '達到工具調用上限'}
+                    {processInfo.data.reason === 'sufficient_information' && '資訊已足夠'}
+                    {processInfo.data.reason === 'no_tools_needed' && '不需要工具'}
+                    {processInfo.data.reason === 'no_reflection' && '無需繼續探索'}
+                  </span>
+                </div>
+                {processInfo.data.toolCallCount !== undefined && (
+                  <div>
+                    <span className="font-medium text-gray-600">工具調用次數：</span>
+                    <span className="text-gray-800 ml-2">{processInfo.data.toolCallCount} 次</span>
+                  </div>
+                )}
+                <div className="text-gray-600 italic pt-1">
+                  {processInfo.description}
+                </div>
+              </div>
+            </div>
           )}
           
           {/* 特殊處理工具呼叫開始 */}

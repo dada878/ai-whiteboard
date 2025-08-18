@@ -157,6 +157,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    
+    // 診斷接收到的白板資料
+    console.log('=== 接收到的白板資料 ===');
+    console.log(`便利貼數量: ${whiteboardData.notes?.length || 0}`);
+    console.log(`連接數量: ${whiteboardData.edges?.length || 0}`);
+    console.log(`群組數量: ${whiteboardData.groups?.length || 0}`);
+    if (whiteboardData.notes?.length > 0) {
+      console.log(`第一個便利貼: ${whiteboardData.notes[0].content.substring(0, 100)}`);
+    }
+    console.log('========================');
 
     // 建立 SSE 回應
     const encoder = new TextEncoder();
@@ -194,7 +204,7 @@ export async function POST(request: NextRequest) {
 
           // ============ 階段 3: 準備系統 prompt（但不顯示計劃） ============
           // 使用 Markdown prompt
-          const systemPromptWithContext = await promptService.compilePrompt('agent/main.md', {
+          const systemPromptWithContext = await promptService.compilePrompt('agent/stream-natural.md', {
             whiteboardSummary: whiteboardSummary,
             intentAnalysis: naturalIntentAnalysis,
             userMessage: message
@@ -317,7 +327,16 @@ export async function POST(request: NextRequest) {
                   });
                 }
               } else {
+                // 達到最大工具調用次數
                 shouldContinue = false;
+                controller.enqueue(encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: 'stop_reason',
+                    reason: 'max_tools_reached',
+                    description: `已達到最大工具調用次數限制 (${MAX_TOOL_CALLS} 次)`,
+                    toolCallCount
+                  })}\n\n`
+                ));
               }
             } else {
               // AI 沒有調用工具，但可能是因為 prompt 不夠明確
@@ -354,13 +373,42 @@ export async function POST(request: NextRequest) {
                     });
                     shouldContinue = true; // 繼續循環
                   } else {
-                    shouldContinue = false; // 反思說不需要繼續
+                    // 反思說不需要繼續
+                    shouldContinue = false;
+                    controller.enqueue(encoder.encode(
+                      `data: ${JSON.stringify({
+                        type: 'stop_reason',
+                        reason: 'sufficient_information',
+                        description: '根據反思判斷已收集足夠資訊',
+                        toolCallCount
+                      })}\n\n`
+                    ));
                   }
                 } else {
-                  shouldContinue = false; // 沒有反思，停止
+                  // 沒有反思，停止
+                  shouldContinue = false;
+                  controller.enqueue(encoder.encode(
+                    `data: ${JSON.stringify({
+                      type: 'stop_reason',
+                      reason: 'no_reflection',
+                      description: 'AI 決定不需要進一步探索',
+                      toolCallCount
+                    })}\n\n`
+                  ));
                 }
               } else {
-                shouldContinue = false; // 第一次就沒工具調用，停止
+                // 第一次就沒工具調用，停止
+                shouldContinue = false;
+                controller.enqueue(encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: 'stop_reason',
+                    reason: 'no_tools_needed',
+                    description: toolCallCount === 0 
+                      ? 'AI 判斷不需要使用工具即可回答'
+                      : 'AI 判斷已有足夠資訊回答問題',
+                    toolCallCount
+                  })}\n\n`
+                ));
               }
             }
           }
@@ -370,12 +418,15 @@ export async function POST(request: NextRequest) {
             `data: ${JSON.stringify({ type: 'response_start' })}\n\n`
           ));
 
+          // 使用 promptService 載入最終回應 prompt
+          const finalResponsePrompt = await promptService.compilePrompt('agent/final-response.md', {
+            originalQuestion: message
+          });
+          
           // 最終提醒
           allMessages.push({
             role: 'system',
-            content: `請基於所有收集的資訊，用自然友善的語氣回答使用者的原始問題：「${message}」
-
-如果資訊不完整，請誠實說明找到了什麼，還缺什麼。請用具體的例子和引用來支持你的答案。`
+            content: finalResponsePrompt
           });
 
           // 生成最終回應（GPT-4o 可以處理更多 context）
@@ -444,32 +495,57 @@ export async function POST(request: NextRequest) {
 async function generateComprehensiveOverview(whiteboardData: WhiteboardData): Promise<{summary: string, prompts: any[]}> {
   try {
     // 限制便利貼數量以避免 context 過長
-    const maxNotes = 20;
+    const maxNotes = 30;  // 增加到 30 個
     const notes = whiteboardData.notes.slice(0, maxNotes);
     const hasMoreNotes = whiteboardData.notes.length > maxNotes;
     
     // 準備精簡的摘要數據
     const summaryData = {
-      notes: notes.map(note => note.content.substring(0, 100)), // 限制每個便利貼長度
-      connections: whiteboardData.edges.length,
+      notes: notes.map(note => note.content), // 使用完整內容
+      connections: whiteboardData.edges?.length || 0,
       groups: whiteboardData.groups?.length || 0,
       images: whiteboardData.images?.length || 0,
-      totalNotes: whiteboardData.notes.length
+      totalNotes: whiteboardData.notes?.length || 0
     };
+    
+    // 獲取群組名稱
+    const groupNames = whiteboardData.groups?.slice(0, 10).map(g => g.name).join('、') || '無';
 
-    // 準備 prompt 內容（精簡版）
+    // 診斷資料
+    console.log('=== 白板摘要資料診斷 ===');
+    console.log(`總便利貼數: ${whiteboardData.notes.length}`);
+    console.log(`實際處理的便利貼數: ${notes.length}`);
+    console.log(`前 5 個便利貼內容:`, notes.slice(0, 5).map(n => n.content.substring(0, 50)));
+    console.log(`群組資訊:`, whiteboardData.groups?.slice(0, 5).map(g => ({ id: g.id, name: g.name })));
+
+    // 準備主要內容 - 選擇最重要的便利貼
+    const mainNotes = summaryData.notes.slice(0, 20);
+    const mainContent = mainNotes.map((content, idx) => 
+      `${idx + 1}. ${content.length > 150 ? content.substring(0, 150) + '...' : content}`
+    ).join('\n');
+    
+    // 使用 promptService 載入白板摘要 prompt
+    const summaryPromptContent = await promptService.compilePrompt('agent/whiteboard-summary.md', {
+      mainContent: mainContent,
+      hasMore: hasMoreNotes ? '\n...還有更多內容' : '',
+      totalNotes: summaryData.totalNotes.toString(),
+      connections: summaryData.connections.toString(),
+      groups: summaryData.groups.toString(),
+      groupNames: groupNames
+    });
+    
+    console.log('傳遞給 AI 的主要內容長度:', mainContent.length);
+    console.log('群組名稱:', groupNames);
+    console.log('======================');
+    
     const summaryPrompt = [
       {
         role: 'system',
-        content: '你是一個內容摘要專家，請為白板內容生成詳細且有洞察力的摘要，限制在500字以內。'
+        content: '你是一個內容摘要專家。'
       },
       {
         role: 'user',
-        content: `請為這張白板生成簡潔摘要：
-
-主要內容：${summaryData.notes.slice(0, 10).join('、')}${hasMoreNotes ? '...(還有更多)' : ''}
-統計：${summaryData.totalNotes}個便利貼、${summaryData.connections}個連接、${summaryData.groups}個群組
-請提取核心主題和關鍵概念，限制500字以內。`
+        content: summaryPromptContent
       }
     ];
 
@@ -645,31 +721,23 @@ async function createActionPlan(
   whiteboardSummary: string
 ): Promise<string> {
   try {
+    // 使用 promptService 載入行動計劃 prompt
+    const actionPlanPrompt = await promptService.compilePrompt('agent/action-plan.md', {
+      question,
+      intentAnalysis,
+      whiteboardSummary
+    });
+    
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         {
           role: 'system',
-          content: `基於意圖分析，制定具體的行動計劃。說明你會使用什麼工具、為什麼、以什麼順序。
-
-可用工具：
-1. search_notes - 搜尋便利貼內容
-2. get_note_by_id - 取得特定便利貼詳細資訊
-3. search_groups - 搜尋群組
-4. get_group_by_id - 取得特定群組詳細資訊
-5. get_whiteboard_overview - 取得白板概覽統計`
+          content: '你是一個善於制定行動計劃的助手。'
         },
         {
           role: 'user',
-          content: `原始問題：${question}
-
-意圖分析：
-${intentAnalysis}
-
-白板摘要：
-${whiteboardSummary}
-
-請制定行動計劃：我應該使用什麼工具，按什麼順序，為什麼？`
+          content: actionPlanPrompt
         }
       ],
       temperature: 0.5
@@ -698,157 +766,67 @@ async function reflectNaturally(
       .filter(info => info.tool === 'get_note_by_id' && info.result?.note)
       .map(info => info.result.note);
     
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',  // 升級到 GPT-4o
-      messages: [
-        {
-          role: 'system',
-          content: `請用自然的第一人稱思考方式反思：我收集的資訊是否足以回答使用者的問題？特別要考慮圖探索策略。
-
-🔗 **圖探索檢查重點**：
-- 我是否找到了有連接關係的便利貼（connections.total > 0）？
-- 我是否對那些便利貼的**相鄰節點**（connections 中的其他 noteId）進行了探索？
-- **錯誤檢查**：我是否重複對同一個便利貼使用 get_note_by_id？應該避免！
-- **正確做法**：應該對 connections.incoming 和 connections.outgoing 中的 noteId 使用 get_note_by_id
-- 相鄰節點可能包含更深入或相關的資訊，是圖探索的核心價值
-
-如果需要繼續搜尋，要同時考慮發散性搜尋和圖探索策略。`
-        },
-        {
-          role: 'user',
-          content: `原始問題：${originalQuestion}
-
-我已經使用了 ${toolCount} 個工具，收集到以下資訊：
-${JSON.stringify(collectedInfo, null, 2)}
-
-📊 **資訊分析**：
-- 找到的便利貼 ID：${foundNoteIds.length > 0 ? foundNoteIds.join(', ') : '無'}
-- 已詳細探索的便利貼：${detailedNotes.length} 個
-  ${detailedNotes.map(note => `  * ${note.id}: ${note.content?.substring(0, 30)}...`).join('\n  ')}
-- 🔗 **圖探索狀況檢查**：
-${detailedNotes.map(note => {
-  // 檢查新的連接格式：connections.incoming 和 connections.outgoing 現在是物件陣列
-  const incomingNodes = note.connections?.incoming || [];
-  const outgoingNodes = note.connections?.outgoing || [];
-  
-  if (incomingNodes.length > 0 || outgoingNodes.length > 0) {
-    const incomingIds = incomingNodes.map((conn: any) => conn.noteId);
-    const outgoingIds = outgoingNodes.map((conn: any) => conn.noteId);
-    const allConnectedIds = [...incomingIds, ...outgoingIds];
+    // 準備詳細便利貼資訊
+    const detailedNotesInfo = detailedNotes
+      .map(note => `  * ${note.id}: ${note.content?.substring(0, 30)}...`)
+      .join('\n  ');
     
-    const alreadyExplored = allConnectedIds.filter(id => detailedNotes.some(n => n.id === id));
-    const notExplored = allConnectedIds.filter(id => !detailedNotes.some(n => n.id === id));
-    
-    // 顯示相鄰節點的內容預覽
-    const notExploredWithContent = notExplored.map(id => {
-      const incomingMatch = incomingNodes.find((n: any) => n.noteId === id);
-      const outgoingMatch = outgoingNodes.find((n: any) => n.noteId === id);
-      const content = incomingMatch?.noteContent || outgoingMatch?.noteContent || '未知';
-      return `${id.substring(0, 8)}...(${content.substring(0, 20)}...)`;
-    });
-    
-    return `  * ${note.id.substring(0, 8)}...(${note.content?.substring(0, 20)}...) 的相鄰節點：
+    // 準備圖探索狀況
+    const graphExplorationStatus = detailedNotes.map(note => {
+      // 檢查新的連接格式：connections.incoming 和 connections.outgoing 現在是物件陣列
+      const incomingNodes = note.connections?.incoming || [];
+      const outgoingNodes = note.connections?.outgoing || [];
+      
+      if (incomingNodes.length > 0 || outgoingNodes.length > 0) {
+        const incomingIds = incomingNodes.map((conn: any) => conn.noteId);
+        const outgoingIds = outgoingNodes.map((conn: any) => conn.noteId);
+        const allConnectedIds = [...incomingIds, ...outgoingIds];
+        
+        const alreadyExplored = allConnectedIds.filter(id => detailedNotes.some(n => n.id === id));
+        const notExplored = allConnectedIds.filter(id => !detailedNotes.some(n => n.id === id));
+        
+        // 顯示相鄰節點的內容預覽
+        const notExploredWithContent = notExplored.map(id => {
+          const incomingMatch = incomingNodes.find((n: any) => n.noteId === id);
+          const outgoingMatch = outgoingNodes.find((n: any) => n.noteId === id);
+          const content = incomingMatch?.noteContent || outgoingMatch?.noteContent || '未知';
+          return `${id.substring(0, 8)}...(${content.substring(0, 20)}...)`;
+        });
+        
+        return `  * ${note.id.substring(0, 8)}...(${note.content?.substring(0, 20)}...) 的相鄰節點：
     - 已探索 [${alreadyExplored.map(id => id.substring(0, 8) + '...').join(', ') || '無'}]
     - 🎯 未探索 [${notExploredWithContent.join(', ') || '無'}]`;
-  }
-  return `  * ${note.id.substring(0, 8)}...(${note.content?.substring(0, 20)}...): 無連接關係`;
-}).join('\n')}
-
-請思考：
-1. 我找到的資訊是否能回答使用者的問題？
-2. 我對這個答案有多確信？
-3. **🔗 圖探索檢查**：
-   - 我有沒有重複對同一個便利貼使用 get_note_by_id？（這是錯誤的）
-   - 我有沒有對相鄰節點（connections 中的 noteId）使用 get_note_by_id？
-   - 上面的「未探索」列表中有沒有值得探索的相鄰節點？
-4. 我是否需要尋找更多資訊？
-5. 如果需要搜尋，應該從哪些角度進行？（發散性思考 + 正確的圖探索）
-
-🔍 **策略提醒**：
-- 發散性搜尋：嘗試不同關鍵字、同義詞、相關概念
-- **正確的圖探索**：對 connections.incoming 和 connections.outgoing 中的**其他便利貼 ID** 使用 get_note_by_id
-- **避免錯誤**：不要重複對同一個便利貼使用 get_note_by_id
-- 組合策略：搜尋新關鍵字的同時，探索未探索的相鄰節點
-
-請用自然的語氣回答，就像在思考一樣。`
-        }
-      ],
-      temperature: 0.7
+      }
+      return `  * ${note.id.substring(0, 8)}...(${note.content?.substring(0, 20)}...): 無連接關係`;
+    }).join('\n');
+    
+    // 使用 promptService 載入反思 prompt
+    const reflectionPrompt = await promptService.compilePrompt('agent/natural-reflection.md', {
+      originalQuestion,
+      toolCount: toolCount.toString(),
+      collectedInfo: JSON.stringify(collectedInfo, null, 2),  // 傳遞完整的收集資訊
+      foundNoteIds: foundNoteIds.join(', ') || '無',
+      detailedNotes: detailedNotes.length.toString(),
+      detailedNotesInfo,
+      graphExplorationStatus
     });
 
     const reflectionMessages = [
       {
         role: 'system',
-        content: `請用自然的第一人稱思考方式反思：我收集的資訊是否足以回答使用者的問題？特別要考慮圖探索策略。
-
-🔗 **圖探索檢查重點**：
-- 我是否找到了有連接關係的便利貼（connections.total > 0）？
-- 我是否對那些便利貼的**相鄰節點**（connections 中的其他 noteId）進行了探索？
-- **錯誤檢查**：我是否重複對同一個便利貼使用 get_note_by_id？應該避免！
-- **正確做法**：應該對 connections.incoming 和 connections.outgoing 中的 noteId 使用 get_note_by_id
-- 相鄰節點可能包含更深入或相關的資訊，是圖探索的核心價值
-
-如果需要繼續搜尋，要同時考慮發散性搜尋和圖探索策略。`
+        content: '你是一個智能白板助手，正在反思你收集的資訊是否足夠。'
       },
       {
         role: 'user',
-        content: `原始問題：${originalQuestion}
-
-我已經使用了 ${toolCount} 個工具，收集到以下資訊：
-${JSON.stringify(collectedInfo, null, 2)}
-
-📊 **資訊分析**：
-- 找到的便利貼 ID：${foundNoteIds.length > 0 ? foundNoteIds.join(', ') : '無'}
-- 已詳細探索的便利貼：${detailedNotes.length} 個
-  ${detailedNotes.map(note => `  * ${note.id}: ${note.content?.substring(0, 30)}...`).join('\n  ')}
-- 🔗 **圖探索狀況檢查**：
-${detailedNotes.map(note => {
-  // 檢查新的連接格式：connections.incoming 和 connections.outgoing 現在是物件陣列
-  const incomingNodes = note.connections?.incoming || [];
-  const outgoingNodes = note.connections?.outgoing || [];
-  
-  if (incomingNodes.length > 0 || outgoingNodes.length > 0) {
-    const incomingIds = incomingNodes.map((conn: any) => conn.noteId);
-    const outgoingIds = outgoingNodes.map((conn: any) => conn.noteId);
-    const allConnectedIds = [...incomingIds, ...outgoingIds];
-    
-    const alreadyExplored = allConnectedIds.filter(id => detailedNotes.some(n => n.id === id));
-    const notExplored = allConnectedIds.filter(id => !detailedNotes.some(n => n.id === id));
-    
-    // 顯示相鄰節點的內容預覽
-    const notExploredWithContent = notExplored.map(id => {
-      const incomingMatch = incomingNodes.find((n: any) => n.noteId === id);
-      const outgoingMatch = outgoingNodes.find((n: any) => n.noteId === id);
-      const content = incomingMatch?.noteContent || outgoingMatch?.noteContent || '未知';
-      return `${id.substring(0, 8)}...(${content.substring(0, 20)}...)`;
-    });
-    
-    return `  * ${note.id.substring(0, 8)}...(${note.content?.substring(0, 20)}...) 的相鄰節點：
-    - 已探索 [${alreadyExplored.map(id => id.substring(0, 8) + '...').join(', ') || '無'}]
-    - 🎯 未探索 [${notExploredWithContent.join(', ') || '無'}]`;
-  }
-  return `  * ${note.id.substring(0, 8)}...(${note.content?.substring(0, 20)}...): 無連接關係`;
-}).join('\n')}
-
-請思考：
-1. 我找到的資訊是否能回答使用者的問題？
-2. 我對這個答案有多確信？
-3. **🔗 圖探索檢查**：
-   - 我有沒有重複對同一個便利貼使用 get_note_by_id？（這是錯誤的）
-   - 我有沒有對相鄰節點（connections 中的 noteId）使用 get_note_by_id？
-   - 上面的「未探索」列表中有沒有值得探索的相鄰節點？
-4. 我是否需要尋找更多資訊？
-5. 如果需要搜尋，應該從哪些角度進行？（發散性思考 + 正確的圖探索）
-
-🔍 **策略提醒**：
-- 發散性搜尋：嘗試不同關鍵字、同義詞、相關概念
-- **正確的圖探索**：對 connections.incoming 和 connections.outgoing 中的**其他便利貼 ID** 使用 get_note_by_id
-- **避免錯誤**：不要重複對同一個便利貼使用 get_note_by_id
-- 組合策略：搜尋新關鍵字的同時，探索未探索的相鄰節點
-
-請用自然的語氣回答，就像在思考一樣。`
+        content: reflectionPrompt
       }
     ];
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: reflectionMessages as any,
+      temperature: 0.7
+    });
 
     return {
       reflection: response.choices[0].message.content || '我覺得需要更多思考',
@@ -944,6 +922,11 @@ async function executeToolCall(
       return await getGroupById(args, whiteboardData);
     case 'get_whiteboard_overview':
       return await getWhiteboardOverview(args, whiteboardData);
+    // 新的創建工具
+    case 'create_connected_note':
+      return await createConnectedNote(args, whiteboardData);
+    case 'create_edge':
+      return await createEdge(args, whiteboardData);
     default:
       return { error: `Unknown tool: ${toolName}` };
   }
@@ -1342,5 +1325,424 @@ async function getWhiteboardOverview(params: any, whiteboardData: WhiteboardData
       totalImages: images.length
     },
     prompt: toolPrompt
+  };
+}
+
+// ============ 新的創建工具函數 ============
+
+// 🌟 主要創建功能：從現有節點延伸創建便利貼
+async function createConnectedNote(params: any, whiteboardData: WhiteboardData) {
+  try {
+    // 驗證參數
+    if (!params.source_note_id || !params.content) {
+      return { success: false, error: '必須提供來源便利貼ID和內容' };
+    }
+
+    if (params.content.length > 500) {
+      return { success: false, error: '便利貼內容不能超過500字元' };
+    }
+
+    // 查找來源便利貼
+    const sourceNote = (whiteboardData.notes || []).find(n => n.id === params.source_note_id);
+    if (!sourceNote) {
+      return { success: false, error: `找不到ID為 ${params.source_note_id} 的來源便利貼` };
+    }
+
+    // 智能位置計算
+    const position = calculateOptimalPosition(
+      sourceNote,
+      whiteboardData,
+      params.direction || 'auto',
+      params.distance || 250
+    );
+
+    // 智能顏色選擇
+    const color = selectColorByRelationship(
+      params.color || 'auto',
+      params.relationship || 'leads_to',
+      sourceNote.color
+    );
+
+    // 生成新便利貼ID
+    const newNoteId = `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // 創建新便利貼
+    const newNote = {
+      id: newNoteId,
+      x: position.x,
+      y: position.y,
+      width: 200,
+      height: 150,
+      content: params.content,
+      color: color,
+      groupId: sourceNote.groupId
+    };
+
+    // 添加到白板數據
+    if (!whiteboardData.notes) {
+      whiteboardData.notes = [];
+    }
+    whiteboardData.notes.push(newNote);
+
+    // 自動建立連接
+    const connectionDirection = determineConnectionDirection(params.relationship);
+    const edgeId = `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const newEdge = {
+      id: edgeId,
+      from: connectionDirection === 'forward' ? params.source_note_id : newNoteId,
+      to: connectionDirection === 'forward' ? newNoteId : params.source_note_id
+    };
+
+    if (!whiteboardData.edges) {
+      whiteboardData.edges = [];
+    }
+    whiteboardData.edges.push(newEdge);
+
+    return {
+      success: true,
+      newNote: {
+        id: newNote.id,
+        content: newNote.content,
+        x: newNote.x,
+        y: newNote.y,
+        color: newNote.color,
+        groupId: newNote.groupId
+      },
+      connection: {
+        id: newEdge.id,
+        from: newEdge.from,
+        to: newEdge.to,
+        relationship: params.relationship || 'leads_to'
+      },
+      sourceNote: {
+        id: sourceNote.id,
+        content: sourceNote.content.substring(0, 50)
+      },
+      positioning: {
+        direction: (position as any).chosenDirection || 'auto',
+        distance: params.distance || 250,
+        calculatedPosition: { x: position.x, y: position.y }
+      },
+    };
+
+  } catch (error) {
+    return { success: false, error: `創建相關便利貼時發生錯誤: ${error}` };
+  }
+}
+
+async function createNote(params: any, whiteboardData: WhiteboardData) {
+  try {
+    if (!params.content || typeof params.content !== 'string') {
+      return { success: false, error: '便利貼內容不能為空' };
+    }
+
+    if (params.content.length > 500) {
+      return { success: false, error: '便利貼內容不能超過500字元' };
+    }
+
+    const newNoteId = `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    if (params.group_id) {
+      const groupExists = (whiteboardData.groups || []).find(g => g.id === params.group_id);
+      if (!groupExists) {
+        return { success: false, error: `找不到ID為 ${params.group_id} 的群組` };
+      }
+    }
+
+    // 計算智能位置：如果沒有指定座標，找一個合適的位置
+    let finalX = params.x;
+    let finalY = params.y;
+    
+    if (finalX === undefined || finalY === undefined) {
+      const smartPosition = findAvailablePositionNatural(whiteboardData);
+      finalX = finalX || smartPosition.x;
+      finalY = finalY || smartPosition.y;
+    }
+
+    const newNote = {
+      id: newNoteId,
+      x: finalX,
+      y: finalY,
+      width: 200,
+      height: 150,
+      content: params.content,
+      color: params.color || 'yellow',
+      groupId: params.group_id || undefined
+    };
+
+    if (!whiteboardData.notes) {
+      whiteboardData.notes = [];
+    }
+    whiteboardData.notes.push(newNote);
+
+    if (params.group_id) {
+      const group = whiteboardData.groups?.find(g => g.id === params.group_id);
+      if (group) {
+        if (!group.noteIds) {
+          group.noteIds = [];
+        }
+        group.noteIds.push(newNoteId);
+      }
+    }
+
+    return {
+      success: true,
+      note: {
+        id: newNote.id,
+        content: newNote.content,
+        x: newNote.x,
+        y: newNote.y,
+        color: newNote.color,
+        groupId: newNote.groupId
+      },
+    };
+
+  } catch (error) {
+    return { success: false, error: `創建便利貼時發生錯誤: ${error}` };
+  }
+}
+
+async function createEdge(params: any, whiteboardData: WhiteboardData) {
+  try {
+    if (!params.from_note_id || !params.to_note_id) {
+      return { success: false, error: '必須提供起始和目標便利貼ID' };
+    }
+
+    if (params.from_note_id === params.to_note_id) {
+      return { success: false, error: '無法創建自己指向自己的連結' };
+    }
+
+    const fromNote = (whiteboardData.notes || []).find(n => n.id === params.from_note_id);
+    const toNote = (whiteboardData.notes || []).find(n => n.id === params.to_note_id);
+
+    if (!fromNote) {
+      return { success: false, error: `找不到ID為 ${params.from_note_id} 的起始便利貼` };
+    }
+
+    if (!toNote) {
+      return { success: false, error: `找不到ID為 ${params.to_note_id} 的目標便利貼` };
+    }
+
+    const existingEdge = (whiteboardData.edges || []).find(
+      e => e.from === params.from_note_id && e.to === params.to_note_id
+    );
+
+    if (existingEdge) {
+      return { success: false, error: '這兩個便利貼之間已經存在連結' };
+    }
+
+    const newEdgeId = `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    const newEdge = {
+      id: newEdgeId,
+      from: params.from_note_id,
+      to: params.to_note_id
+    };
+
+    if (!whiteboardData.edges) {
+      whiteboardData.edges = [];
+    }
+    whiteboardData.edges.push(newEdge);
+
+    return {
+      success: true,
+      edge: {
+        id: newEdge.id,
+        from: newEdge.from,
+        to: newEdge.to,
+        fromNoteContent: fromNote.content.substring(0, 50),
+        toNoteContent: toNote.content.substring(0, 50)
+      },
+    };
+
+  } catch (error) {
+    return { success: false, error: `創建連結時發生錯誤: ${error}` };
+  }
+}
+
+// 輔助函數
+function calculateOptimalPosition(sourceNote: any, whiteboardData: WhiteboardData, direction: string, distance: number) {
+  const baseX = sourceNote.x;
+  const baseY = sourceNote.y;
+  const noteWidth = sourceNote.width || 200;
+  const noteHeight = sourceNote.height || 150;
+
+  if (direction !== 'auto') {
+    return calculateDirectionalPosition(baseX, baseY, noteWidth, noteHeight, direction, distance);
+  }
+
+  const candidates = [
+    { dir: 'right', pos: calculateDirectionalPosition(baseX, baseY, noteWidth, noteHeight, 'right', distance) },
+    { dir: 'down', pos: calculateDirectionalPosition(baseX, baseY, noteWidth, noteHeight, 'down', distance) },
+    { dir: 'left', pos: calculateDirectionalPosition(baseX, baseY, noteWidth, noteHeight, 'left', distance) },
+    { dir: 'up', pos: calculateDirectionalPosition(baseX, baseY, noteWidth, noteHeight, 'up', distance) }
+  ];
+
+  const existingNotes = whiteboardData.notes || [];
+  
+  for (const candidate of candidates) {
+    const hasOverlap = existingNotes.some(note => 
+      note.id !== sourceNote.id && 
+      isOverlapping(candidate.pos, { x: note.x, y: note.y, width: note.width || 200, height: note.height || 150 })
+    );
+    
+    if (!hasOverlap) {
+      return { ...candidate.pos, chosenDirection: candidate.dir };
+    }
+  }
+
+  const rightPos = candidates[0].pos;
+  return { 
+    x: rightPos.x + 50, 
+    y: rightPos.y, 
+    chosenDirection: 'right_adjusted' 
+  };
+}
+
+function calculateDirectionalPosition(baseX: number, baseY: number, noteWidth: number, noteHeight: number, direction: string, distance: number) {
+  switch (direction) {
+    case 'right':
+      return { x: baseX + noteWidth + distance, y: baseY };
+    case 'left':
+      return { x: baseX - distance - 200, y: baseY };
+    case 'down':
+      return { x: baseX, y: baseY + noteHeight + distance };
+    case 'up':
+      return { x: baseX, y: baseY - distance - 150 };
+    default:
+      return { x: baseX + noteWidth + distance, y: baseY };
+  }
+}
+
+function isOverlapping(rect1: any, rect2: any) {
+  const margin = 20;
+  return !(
+    rect1.x + 200 + margin < rect2.x ||
+    rect2.x + (rect2.width || 200) + margin < rect1.x ||
+    rect1.y + 150 + margin < rect2.y ||
+    rect2.y + (rect2.height || 150) + margin < rect1.y
+  );
+}
+
+function selectColorByRelationship(colorParam: string, relationship: string, sourceColor: string) {
+  if (colorParam !== 'auto') {
+    return colorParam;
+  }
+
+  switch (relationship) {
+    case 'leads_to':
+      return sourceColor === 'blue' ? 'green' : 'blue';
+    case 'derives_from':
+      return sourceColor === 'yellow' ? 'orange' : 'yellow';
+    case 'relates_to':
+      return sourceColor === 'pink' ? 'purple' : 'pink';
+    default:
+      return 'yellow';
+  }
+}
+
+function determineConnectionDirection(relationship: string) {
+  switch (relationship) {
+    case 'leads_to':
+      return 'forward';
+    case 'derives_from':
+      return 'backward';
+    case 'relates_to':
+      return 'forward';
+    default:
+      return 'forward';
+  }
+}
+
+// 找到可用的位置（避免重疊）
+function findAvailablePositionNatural(whiteboardData: WhiteboardData): { x: number; y: number } {
+  const notes = whiteboardData.notes || [];
+  const NOTE_WIDTH = 200;
+  const NOTE_HEIGHT = 120;
+  const MARGIN = 20;
+  
+  // 如果沒有任何便利貼，返回中心附近的位置
+  if (notes.length === 0) {
+    return { x: 300, y: 300 };
+  }
+  
+  // 找到現有便利貼的邊界
+  const bounds = {
+    minX: Math.min(...notes.map(n => n.x)),
+    maxX: Math.max(...notes.map(n => n.x + NOTE_WIDTH)),
+    minY: Math.min(...notes.map(n => n.y)),
+    maxY: Math.max(...notes.map(n => n.y + NOTE_HEIGHT))
+  };
+  
+  // 嘗試在右側找位置
+  const rightX = bounds.maxX + MARGIN;
+  const centerY = (bounds.minY + bounds.maxY) / 2 - NOTE_HEIGHT / 2;
+  
+  if (!hasCollisionNatural(rightX, centerY, notes, NOTE_WIDTH, NOTE_HEIGHT)) {
+    return { x: rightX, y: centerY };
+  }
+  
+  // 嘗試在下方找位置
+  const centerX = (bounds.minX + bounds.maxX) / 2 - NOTE_WIDTH / 2;
+  const bottomY = bounds.maxY + MARGIN;
+  
+  if (!hasCollisionNatural(centerX, bottomY, notes, NOTE_WIDTH, NOTE_HEIGHT)) {
+    return { x: centerX, y: bottomY };
+  }
+  
+  // 如果右側和下方都有衝突，就用網格搜索找空位
+  return findGridPositionNatural(bounds, notes, NOTE_WIDTH, NOTE_HEIGHT, MARGIN);
+}
+
+// 檢查是否有碰撞
+function hasCollisionNatural(
+  x: number, 
+  y: number, 
+  notes: any[], 
+  width: number, 
+  height: number
+): boolean {
+  const BUFFER = 10;
+  
+  return notes.some(note => {
+    const noteWidth = 200;
+    const noteHeight = 120;
+    
+    return !(
+      x + width + BUFFER < note.x ||
+      x > note.x + noteWidth + BUFFER ||
+      y + height + BUFFER < note.y ||
+      y > note.y + noteHeight + BUFFER
+    );
+  });
+}
+
+// 網格搜索找空位
+function findGridPositionNatural(
+  bounds: any, 
+  notes: any[], 
+  noteWidth: number, 
+  noteHeight: number, 
+  margin: number
+): { x: number; y: number } {
+  const GRID_SIZE = 250;
+  const startX = Math.max(0, bounds.minX - GRID_SIZE);
+  const startY = Math.max(0, bounds.minY - GRID_SIZE);
+  const endX = bounds.maxX + GRID_SIZE;
+  const endY = bounds.maxY + GRID_SIZE;
+  
+  for (let y = startY; y <= endY; y += GRID_SIZE) {
+    for (let x = startX; x <= endX; x += GRID_SIZE) {
+      if (!hasCollisionNatural(x, y, notes, noteWidth, noteHeight)) {
+        return { x, y };
+      }
+    }
+  }
+  
+  // 如果都找不到，就隨機找個位置
+  return {
+    x: bounds.maxX + margin + Math.random() * 200,
+    y: bounds.minY + Math.random() * 200
   };
 }
