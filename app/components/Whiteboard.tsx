@@ -4485,22 +4485,6 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
             backgroundPosition: `${panOffset.x % (20 * zoomLevel)}px ${panOffset.y % (20 * zoomLevel)}px`
           }}
         />
-        {/* 畫布使用提示 */}
-        {whiteboardData.notes.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className={`text-center select-none ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-              <div className="text-6xl mb-4">🧠</div>
-              <div className="text-lg font-medium mb-2">歡迎使用 ThinkBoard</div>
-              <div className="text-sm space-y-1">
-                <p>• 雙擊空白處新增便利貼</p>
-                <p>• 左鍵拖拽進行框選</p>
-                <p>• 右鍵拖拽移動畫布</p>
-                <p>• Ctrl+滾輪或雙指縮放</p>
-                <p>• 使用右下角控制器調整縮放</p>
-              </div>
-            </div>
-          </div>
-        )}
         {/* 無限畫布容器 */}
         <div 
           ref={containerRef}

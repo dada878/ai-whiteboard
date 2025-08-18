@@ -27,7 +27,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name: session.user.name,
     image: session.user.image,
     plan: (session.user as { plan?: 'free' | 'plus' }).plan,
-    isPlus: Boolean((session.user as { isPlus?: boolean }).isPlus)
+    isPlus: Boolean((session.user as { isPlus?: boolean }).isPlus),
+    profileComplete: Boolean((session.user as { profileComplete?: boolean }).profileComplete),
+    onboardingStatus: (session.user as { onboardingStatus?: string }).onboardingStatus || 'pending',
+    isApproved: Boolean((session.user as { isApproved?: boolean }).isApproved)
   } : null;
 
   const signInWithGoogle = async () => {

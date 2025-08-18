@@ -193,6 +193,53 @@ AI Chat 面板中存在大量的 `dark:` Tailwind 類別，這些類別在某些
 - ✅ 思考過程（意圖分析、反思等）
 - ✅ 工具調用記錄（搜尋、查詢等）
 
+## 2025-08-18
+
+### 新增 AI Chat 訊息的重新生成和編輯功能
+
+**使用者需求**：
+AI Chat 希望可以有 regenerate / edit 訊息的功能
+
+**解決方案**：
+為 AI Chat 添加了訊息重新生成和編輯功能，提升對話互動的靈活性。
+
+**技術實現**：
+
+1. **useAIAgent Hook 擴展**：
+   - 新增 `regenerateMessage`：重新生成指定的 AI 訊息
+   - 新增 `editMessage`：編輯並重新發送使用者訊息
+   - 新增 `startEditMessage`：開始編輯模式
+   - 新增 `cancelEditMessage`：取消編輯模式
+   - ChatMessage 介面新增 `isEditing` 和 `originalContent` 欄位
+
+2. **重新生成邏輯**：
+   - 找到 AI 訊息前最近的使用者訊息
+   - 移除該 AI 訊息及後續所有訊息
+   - 重新發送使用者訊息以獲得新的 AI 回應
+
+3. **編輯功能實現**：
+   - 使用者可編輯自己的訊息
+   - 編輯後移除後續所有訊息並重新發送
+   - 支援取消編輯恢復原始內容
+
+4. **UI 元件更新**（AIChatPanel.tsx）：
+   - 新增編輯模式的 textarea 和控制按鈕
+   - 使用者訊息：hover 時顯示編輯按鈕（Edit2 圖標）
+   - AI 訊息：hover 時顯示重新生成按鈕（RefreshCw 圖標）
+   - 編輯模式：顯示儲存（Check）和取消（X）按鈕
+
+**功能特色**：
+- ✨ 使用者可編輯已發送的訊息並重新獲得 AI 回應
+- 🔄 AI 訊息可重新生成以獲得不同的回應
+- 🎨 優雅的 hover 效果顯示操作按鈕
+- 💾 編輯模式支援儲存或取消操作
+- 📝 自動聚焦和選中編輯文字
+- 🔗 保持對話歷史的連貫性
+
+**影響檔案**：
+- `/app/hooks/useAIAgent.ts` - 新增重新生成和編輯功能
+- `/app/components/AIChat/AIChatPanel.tsx` - 更新 UI 元件和互動邏輯
+
 ### 之前記錄
 
 ### 設計 AI Agent 對話功能

@@ -476,14 +476,24 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
     }
   };
 
-  const handleColorChange = (colorObj: { color: string; border: string }) => {
-    if (isMultiSelected && onBatchColorChange) {
-      // 批量變更顏色
-      onBatchColorChange(colorObj.color);
-    } else {
-      // 單個變更顏色
-      onUpdate({ color: colorObj.color });
+  const handleColorChange = (colorObj: { color: string; border: string }, e?: React.MouseEvent) => {
+    // 阻止事件冒泡和預設行為
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
+    
+    // 延遲執行，確保不會干擾選單關閉
+    setTimeout(() => {
+      if (isMultiSelected && onBatchColorChange) {
+        // 批量變更顏色
+        onBatchColorChange(colorObj.color);
+      } else {
+        // 單個變更顏色
+        onUpdate({ color: colorObj.color });
+      }
+    }, 10);
+    
     setShowContextMenu(false); // 關閉右鍵選單
   };
 
@@ -529,39 +539,49 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
     }
   };
 
-  const handleContextMenuAction = (action: string) => {
-    setShowContextMenu(false);
-    switch (action) {
-      case 'ai':
-        onAIBrainstorm();
-        break;
-      case 'askAI':
-        if (onAskAI) {
-          onAskAI();
-        }
-        break;
-      case 'connect':
-        onStartConnection();
-        break;
-      case 'copy':
-        if (isMultiSelected && onBatchCopy) {
-          onBatchCopy();
-        }
-        break;
-      case 'group':
-        if (isMultiSelected && onCreateGroup) {
-          onCreateGroup();
-        }
-        break;
-      case 'ungroup':
-        if (onUngroupNotes) {
-          onUngroupNotes();
-        }
-        break;
-      case 'delete':
-        onDelete();
-        break;
+  const handleContextMenuAction = (action: string, e?: React.MouseEvent) => {
+    // 阻止事件冒泡和預設行為
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
+    
+    setShowContextMenu(false);
+    
+    // 延遲執行動作，確保選單已關閉
+    setTimeout(() => {
+      switch (action) {
+        case 'ai':
+          onAIBrainstorm();
+          break;
+        case 'askAI':
+          if (onAskAI) {
+            onAskAI();
+          }
+          break;
+        case 'connect':
+          onStartConnection();
+          break;
+        case 'copy':
+          if (isMultiSelected && onBatchCopy) {
+            onBatchCopy();
+          }
+          break;
+        case 'group':
+          if (isMultiSelected && onCreateGroup) {
+            onCreateGroup();
+          }
+          break;
+        case 'ungroup':
+          if (onUngroupNotes) {
+            onUngroupNotes();
+          }
+          break;
+        case 'delete':
+          onDelete();
+          break;
+      }
+    }, 10);
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
@@ -1148,6 +1168,18 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
               left: Math.min(menuPosition.x + 10, window.innerWidth - 200),
               top: Math.min(menuPosition.y + 10, window.innerHeight - 200),
             }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onMouseUp={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
           >
             <div className="px-3 py-1 text-xs font-medium border-b mb-1 text-gray-500 border-gray-100">
               {isMultiSelected ? '批量操作' : '便利貼操作'}
@@ -1164,7 +1196,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                         ? 'text-gray-300 hover:bg-blue-900/30 hover:text-blue-400' 
                         : 'text-gray-700 hover:bg-blue-50 hover:text-blue-600'
                   }`}
-                  onClick={isAILoading ? undefined : () => handleContextMenuAction('ai')}
+                  onClick={isAILoading ? undefined : (e) => handleContextMenuAction('ai', e)}
                   disabled={isAILoading}
                 >
                   {isAILoading ? (
@@ -1185,7 +1217,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                       ? 'text-gray-300 hover:bg-purple-900/30 hover:text-purple-400' 
                       : 'text-gray-700 hover:bg-purple-50 hover:text-purple-600'
                   }`}
-                  onClick={() => handleContextMenuAction('askAI')}
+                  onClick={(e) => handleContextMenuAction('askAI', e)}
                 >
                   <span className="text-base">💬</span>
                   <span>詢問 AI</span>
@@ -1196,7 +1228,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                       ? 'text-gray-300 hover:bg-green-900/30 hover:text-green-400' 
                       : 'text-gray-700 hover:bg-green-50 hover:text-green-600'
                   }`}
-                  onClick={() => handleContextMenuAction('connect')}
+                  onClick={(e) => handleContextMenuAction('connect', e)}
                 >
                   <span className="text-base">🔗</span>
                   <span>開始連線</span>
@@ -1211,7 +1243,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                       ? 'text-gray-300 hover:bg-orange-900/30 hover:text-orange-400' 
                       : 'text-gray-700 hover:bg-orange-50 hover:text-orange-600'
                   }`}
-                  onClick={() => handleContextMenuAction('copy')}
+                  onClick={(e) => handleContextMenuAction('copy', e)}
                 >
                   <span className="text-base">📋</span>
                   <span>複製選取項目</span>
@@ -1222,7 +1254,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                       ? 'text-gray-300 hover:bg-purple-900/30 hover:text-purple-400' 
                       : 'text-gray-700 hover:bg-purple-50 hover:text-purple-600'
                   }`}
-                  onClick={() => handleContextMenuAction('group')}
+                  onClick={(e) => handleContextMenuAction('group', e)}
                 >
                   <span className="text-base">📦</span>
                   <span>建立群組</span>
@@ -1237,7 +1269,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                     ? 'text-gray-300 hover:bg-indigo-900/30 hover:text-indigo-400' 
                     : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
                 }`}
-                onClick={() => handleContextMenuAction('ungroup')}
+                onClick={(e) => handleContextMenuAction('ungroup', e)}
               >
                 <span className="text-base">📂</span>
                 <span>取消群組</span>
@@ -1254,7 +1286,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                       backgroundColor: colorObj.color,
                       borderColor: note.color === colorObj.color ? colorObj.border : '#D1D5DB'
                     }}
-                    onClick={() => handleColorChange(colorObj)}
+                    onClick={(e) => handleColorChange(colorObj, e)}
                     title={colorObj.name}
                   >
                     {note.color === colorObj.color && (
@@ -1273,7 +1305,7 @@ const StickyNoteComponent: React.FC<StickyNoteComponentProps> = ({
                   ? 'text-red-400 hover:bg-red-900/30' 
                   : 'text-red-600 hover:bg-red-50'
               }`}
-              onClick={() => handleContextMenuAction('delete')}
+              onClick={(e) => handleContextMenuAction('delete', e)}
             >
               <span className="text-base">🗑️</span>
               <span>刪除</span>

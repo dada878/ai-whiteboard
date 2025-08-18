@@ -135,7 +135,9 @@ export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) 
                 </span>
               </div>
             ) : (
-              <a
+              /* 暫時隱藏升級 Plus 按鈕 */
+              null
+              /* <a
                 href="/plus"
                 className={`mt-2 inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${
                   isDarkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-50 text-blue-700'
@@ -143,7 +145,7 @@ export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) 
                 onClick={() => setShowMenu(false)}
               >
                 升級 Plus
-              </a>
+              </a> */
             )}
           </div>
 

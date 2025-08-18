@@ -238,6 +238,18 @@ const GroupComponent: React.FC<GroupComponentProps> = ({
               left: Math.min(menuPosition.x + 10, window.innerWidth - 200),
               top: Math.min(menuPosition.y + 10, window.innerHeight - 300),
             }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onMouseUp={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
           >
             <div className={`px-3 py-1 text-xs font-medium border-b mb-1 ${
               isDarkMode

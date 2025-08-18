@@ -33,7 +33,8 @@ export default function Header({ onShowPlusWelcome }: HeaderProps) {
           <span className="sm:hidden">TB</span>
         </Link>
         <div className="flex items-center gap-2 sm:gap-3">
-          {!isPlus && (
+          {/* 暫時隱藏升級 Plus 按鈕 */}
+          {/* {!isPlus && (
             <Link href="/plus" className={`text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded transition-colors ${
               isDarkMode 
                 ? 'bg-yellow-900/30 text-yellow-400 hover:bg-yellow-900/50' 
@@ -42,7 +43,7 @@ export default function Header({ onShowPlusWelcome }: HeaderProps) {
               <span className="hidden sm:inline">升級 Plus</span>
               <span className="sm:hidden">Plus</span>
             </Link>
-          )}
+          )} */}
           <AuthButton onShowPlusWelcome={onShowPlusWelcome} />
         </div>
       </div>

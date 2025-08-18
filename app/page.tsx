@@ -22,6 +22,18 @@ export default function Home() {
       return;
     }
     
+    // 檢查用戶是否完成個人資料
+    if (!user.profileComplete && user.onboardingStatus === 'pending') {
+      router.push('/onboarding');
+      return;
+    }
+    
+    // 檢查用戶是否已被批准
+    if (user.profileComplete && !user.isApproved) {
+      router.push('/waiting-approval');
+      return;
+    }
+    
     // 檢查是否是 Plus 會員且尚未顯示過歡迎對話框
     if (user?.isPlus) {
       const hasSeenWelcome = localStorage.getItem('plusWelcomeSeen');

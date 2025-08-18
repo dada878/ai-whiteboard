@@ -56,6 +56,31 @@ export const authOptions: NextAuthOptions = {
   },
   
   callbacks: {
+    async signIn({ user, account, profile }) {
+      // Allow all users to sign in
+      // We'll check for profile completion in the app
+      if (user?.email) {
+        const db = getFirestore();
+        
+        // Create or update user profile
+        const userRef = db.collection('users').doc(user.id || user.email);
+        const userDoc = await userRef.get();
+        
+        if (!userDoc.exists) {
+          // New user - create basic profile
+          await userRef.set({
+            email: user.email,
+            name: user.name || '',
+            createdAt: new Date().toISOString(),
+            profileComplete: false,
+            onboardingStatus: 'pending',
+          }, { merge: true });
+        }
+      }
+      
+      return true;
+    },
+    
     async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
@@ -76,8 +101,20 @@ export const authOptions: NextAuthOptions = {
           const shouldRefresh = !token.planCheckAt || (now - (token.planCheckAt as number)) > 60_000; // refresh every 60s
           if (shouldRefresh) {
             if (snap.exists) {
-              const data = snap.data() as { plan?: 'free' | 'plus'; email?: string; name?: string } | undefined;
+              const data = snap.data() as { 
+                plan?: 'free' | 'plus'; 
+                email?: string; 
+                name?: string;
+                profileComplete?: boolean;
+                onboardingStatus?: string;
+                school?: string;
+                major?: string;
+                isApproved?: boolean;
+              } | undefined;
               token.plan = data?.plan || 'free';
+              token.profileComplete = data?.profileComplete || false;
+              token.onboardingStatus = data?.onboardingStatus || 'pending';
+              token.isApproved = data?.isApproved || false;
               // ensure token has email for pregrant claim
               if (!token.email && data?.email) token.email = data.email;
               // sync display name from Firestore if present
@@ -111,6 +148,13 @@ export const authOptions: NextAuthOptions = {
         const plan = (token.plan as 'free' | 'plus') || 'free';
         session.user.plan = plan;
         session.user.isPlus = plan === 'plus';
+        session.user.profileComplete = token.profileComplete as boolean || false;
+        session.user.onboardingStatus = token.onboardingStatus as string || 'pending';
+        session.user.isApproved = token.isApproved as boolean || false;
+        // Admin is always approved
+        if (session.user.email === 'dada878@gmail.com') {
+          session.user.isApproved = true;
+        }
         if (token.name) {
           session.user.name = token.name as string;
         }

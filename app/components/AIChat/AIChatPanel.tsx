@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Trash2, RotateCcw, Bot, User, Loader2, Sparkles } from 'lucide-react';
+import { Send, Trash2, RotateCcw, Bot, User, Loader2, Sparkles, Edit2, Check, X, RefreshCw } from 'lucide-react';
 import { useAIAgent, ChatMessage } from '@/app/hooks/useAIAgent';
 import { WhiteboardData } from '@/app/types';
 
@@ -20,6 +20,10 @@ export function AIChatPanel({ whiteboardData, onClose }: AIChatPanelProps) {
     clearMessages, 
     cancelRequest,
     retryLastMessage,
+    regenerateMessage,
+    editMessage,
+    startEditMessage,
+    cancelEditMessage,
     isLoading 
   } = useAIAgent(whiteboardData, {
     onError: (error) => {
@@ -120,7 +124,16 @@ export function AIChatPanel({ whiteboardData, onClose }: AIChatPanelProps) {
         ) : (
           <>
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
+              <MessageBubble 
+                key={msg.id} 
+                message={msg}
+                onRegenerate={regenerateMessage}
+                onEdit={editMessage}
+                onStartEdit={startEditMessage}
+                onCancelEdit={cancelEditMessage}
+                isLastAssistant={msg.role === 'assistant' && 
+                  messages[messages.length - 1].id === msg.id}
+              />
             ))}
             
             {/* 載入中指示器 */}
@@ -182,9 +195,47 @@ export function AIChatPanel({ whiteboardData, onClose }: AIChatPanelProps) {
 }
 
 // 訊息氣泡元件
-function MessageBubble({ message }: { message: ChatMessage }) {
+interface MessageBubbleProps {
+  message: ChatMessage;
+  onRegenerate?: (id: string) => void;
+  onEdit?: (id: string, content: string) => void;
+  onStartEdit?: (id: string) => void;
+  onCancelEdit?: (id: string) => void;
+  isLastAssistant?: boolean;
+}
+
+function MessageBubble({ 
+  message, 
+  onRegenerate, 
+  onEdit, 
+  onStartEdit, 
+  onCancelEdit,
+  isLastAssistant 
+}: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const [showTools, setShowTools] = useState(false);
+  const [editContent, setEditContent] = useState(message.content);
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
+  
+  useEffect(() => {
+    if (message.isEditing && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [message.isEditing]);
+  
+  const handleSaveEdit = () => {
+    if (onEdit) {
+      onEdit(message.id, editContent);
+    }
+  };
+  
+  const handleCancelEdit = () => {
+    setEditContent(message.content);
+    if (onCancelEdit) {
+      onCancelEdit(message.id);
+    }
+  };
   
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
@@ -200,12 +251,64 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         
         {/* 訊息內容 */}
         <div className="flex flex-col gap-1">
-          <div className={`px-4 py-2 rounded-lg ${
+          <div className={`relative group px-4 py-2 rounded-lg ${
             isUser 
               ? 'bg-blue-500 text-white' 
               : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
           }`}>
-            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+            {message.isEditing ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  ref={editInputRef}
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="w-full p-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded border border-gray-300 dark:border-gray-600 resize-none"
+                  rows={3}
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={handleSaveEdit}
+                    className="p-1.5 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+                    title="儲存"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="p-1.5 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                    title="取消"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                
+                {/* 操作按鈕 */}
+                <div className={`absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1`}>
+                  {isUser && onStartEdit && (
+                    <button
+                      onClick={() => onStartEdit(message.id)}
+                      className="p-1 hover:bg-gray-200 rounded text-gray-600 hover:text-gray-800"
+                      title="編輯訊息"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {!isUser && onRegenerate && (
+                    <button
+                      onClick={() => onRegenerate(message.id)}
+                      className="p-1 hover:bg-gray-200 rounded text-gray-600 hover:text-gray-800"
+                      title="重新生成"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
           
           {/* 工具呼叫資訊 */}

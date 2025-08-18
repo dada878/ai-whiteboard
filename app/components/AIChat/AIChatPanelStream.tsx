@@ -47,7 +47,9 @@ function MarkdownContent({ content, className }: { content: string; className?: 
         remarkPlugins={[remarkGfm]}
       components={{
         // 自定義程式碼區塊樣式
-        code: ({ inline, children, ...props }) => {
+        code: ({ className, children, ...props }: any) => {
+          // Check if this is inline code (by checking if parent is pre)
+          const inline = (props as any).node?.parent?.tagName !== 'pre';
           if (inline) {
             return (
               <code 
@@ -58,14 +60,19 @@ function MarkdownContent({ content, className }: { content: string; className?: 
               </code>
             );
           }
+          // For code blocks, return just the code element - pre will be handled separately
           return (
-            <pre className="rounded-lg p-3 overflow-x-auto bg-gray-100">
-              <code className="text-sm font-mono" {...props}>
-                {children}
-              </code>
-            </pre>
+            <code className={`text-sm font-mono ${className || ''}`} {...props}>
+              {children}
+            </code>
           );
         },
+        // Handle pre elements for code blocks
+        pre: ({ children, ...props }) => (
+          <pre className="rounded-lg p-3 overflow-x-auto bg-gray-100 my-2" {...props}>
+            {children}
+          </pre>
+        ),
         // 自定義列表樣式
         ul: ({ children }) => (
           <ul className="list-disc list-inside space-y-1 my-2">

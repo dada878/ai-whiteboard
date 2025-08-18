@@ -78,9 +78,10 @@ const Toolbar: React.FC<ToolbarProps> = ({ onAnalyze, onSummarize, onClear, onIm
       <div className="text-xs text-gray-400 text-center">
         <p className="mb-2">滑鼠右鍵</p>
         <p>新增便利貼</p>
-        <div className="mt-3">
+        {/* 暫時隱藏升級 Plus 按鈕 */}
+        {/* <div className="mt-3">
           <Link href="/plus" className="inline-block px-2 py-1 rounded bg-yellow-200 text-yellow-900">升級 Plus</Link>
-        </div>
+        </div> */}
       </div>
     </div>
   );

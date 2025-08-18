@@ -10,6 +10,8 @@ export interface ChatMessage {
     tool: string;
     result: any;
   }>;
+  isEditing?: boolean; // 標記訊息是否正在編輯
+  originalContent?: string; // 保存原始內容以便取消編輯
 }
 
 interface UseAIAgentOptions {
@@ -194,12 +196,96 @@ export function useAIAgent(
     }
   }, [messages, sendMessage]);
 
+  // 重新生成指定的 AI 訊息
+  const regenerateMessage = useCallback(async (messageId: string) => {
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return;
+    
+    // 找到這個 AI 訊息之前最近的使用者訊息
+    let userMessageIndex = messageIndex - 1;
+    while (userMessageIndex >= 0 && messages[userMessageIndex].role !== 'user') {
+      userMessageIndex--;
+    }
+    
+    if (userMessageIndex < 0) return;
+    
+    const userMessage = messages[userMessageIndex];
+    
+    // 移除從這個 AI 訊息開始的所有後續訊息
+    setMessages(prev => prev.slice(0, messageIndex));
+    
+    // 重新發送使用者訊息以獲得新的回應
+    await sendMessage(userMessage.content);
+  }, [messages, sendMessage]);
+
+  // 編輯訊息
+  const editMessage = useCallback((messageId: string, newContent: string) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id === messageId) {
+        return {
+          ...msg,
+          content: newContent,
+          isEditing: false,
+          originalContent: undefined
+        };
+      }
+      return msg;
+    }));
+    
+    // 如果編輯的是使用者訊息，移除後續的所有訊息並重新發送
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    const message = messages[messageIndex];
+    
+    if (message && message.role === 'user') {
+      // 移除這條訊息之後的所有訊息
+      setMessages(prev => prev.slice(0, messageIndex + 1));
+      
+      // 延遲發送以確保狀態已更新
+      setTimeout(() => {
+        sendMessage(newContent);
+      }, 100);
+    }
+  }, [messages, sendMessage]);
+
+  // 開始編輯訊息
+  const startEditMessage = useCallback((messageId: string) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id === messageId) {
+        return {
+          ...msg,
+          isEditing: true,
+          originalContent: msg.content
+        };
+      }
+      return msg;
+    }));
+  }, []);
+
+  // 取消編輯訊息
+  const cancelEditMessage = useCallback((messageId: string) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id === messageId && msg.originalContent) {
+        return {
+          ...msg,
+          content: msg.originalContent,
+          isEditing: false,
+          originalContent: undefined
+        };
+      }
+      return msg;
+    }));
+  }, []);
+
   return {
     messages,
     sendMessage,
     clearMessages,
     cancelRequest,
     retryLastMessage,
+    regenerateMessage,
+    editMessage,
+    startEditMessage,
+    cancelEditMessage,
     isLoading
   };
 }

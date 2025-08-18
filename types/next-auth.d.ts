@@ -6,6 +6,9 @@ declare module "next-auth" {
       id: string;
       plan?: 'free' | 'plus';
       isPlus?: boolean;
+      profileComplete?: boolean;
+      onboardingStatus?: string;
+      isApproved?: boolean;
     } & DefaultSession["user"]
   }
 }
@@ -15,5 +18,8 @@ declare module "next-auth/jwt" {
     id?: string;
     plan?: 'free' | 'plus';
     planCheckAt?: number;
+    profileComplete?: boolean;
+    onboardingStatus?: string;
+    isApproved?: boolean;
   }
 }

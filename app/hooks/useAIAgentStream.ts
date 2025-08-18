@@ -12,7 +12,7 @@ export interface ChatMessage {
 }
 
 export interface ProcessInfo {
-  type: 'whiteboard_summary_ready' | 'intent_analysis_complete' | 'planning_actions' | 'action_plan_ready' | 'reflection_complete' | 'analyzing_intent' | 'intent_analyzed' | 'generating_context' | 'context_ready' | 'reflecting' | 'decision' | 'thinking' | 'tool_call_start' | 'tool_call_result' | 'tool_call_combined';
+  type: 'whiteboard_summary_ready' | 'intent_analysis_complete' | 'planning_actions' | 'action_plan_ready' | 'reflection_complete' | 'analyzing_intent' | 'intent_analyzed' | 'generating_context' | 'context_ready' | 'reflecting' | 'decision' | 'thinking' | 'tool_call_start' | 'tool_call_result' | 'tool_call_combined' | 'stop_reason';
   data?: any;
   title?: string;
   description?: string;

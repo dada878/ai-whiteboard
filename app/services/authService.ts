@@ -7,6 +7,9 @@ export interface User {
   image?: string | null;
   plan?: 'free' | 'plus';
   isPlus?: boolean;
+  profileComplete?: boolean;
+  onboardingStatus?: string;
+  isApproved?: boolean;
 }
 
 export class AuthService {
