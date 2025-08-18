@@ -15,11 +15,11 @@ export default function LandingPage() {
   
   const handleJoinWaitlist = () => {
     if (user) {
-      // 如果已登入，直接進入主應用
+      // 如果已登入，直接進入主應用（會顯示相應的 dialog）
       router.push('/');
     } else {
-      // 如果未登入，觸發 Google 登入
-      signIn('google', { callbackUrl: '/' });
+      // 如果未登入，觸發 Google 登入，登入後導向主頁面
+      signIn('google', { callbackUrl: '/?joined=true' });
     }
   };
 
@@ -47,7 +47,7 @@ export default function LandingPage() {
                 disabled={loading}
                 className="px-8 py-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                加入等候名單
+                Join Waitlist
               </button>
             </div>
           </div>

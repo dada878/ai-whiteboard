@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Whiteboard from './components/Whiteboard';
 import PlusWelcomeDialog from './components/PlusWelcomeDialog';
+import WaitlistDialog from './components/WaitlistDialog';
 import Header from './components/Header';
 import { useAuth } from './contexts/AuthContext';
 
@@ -11,6 +12,7 @@ export default function Home() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
+  const [showWaitlistDialog, setShowWaitlistDialog] = useState(false);
 
   useEffect(() => {
     // 如果還在載入中，不做任何事
@@ -22,15 +24,10 @@ export default function Home() {
       return;
     }
     
-    // 檢查用戶是否完成個人資料
-    if (!user.profileComplete && user.onboardingStatus === 'pending') {
-      router.push('/onboarding');
-      return;
-    }
-    
     // 檢查用戶是否已被批准
-    if (user.profileComplete && !user.isApproved) {
-      router.push('/waiting-approval');
+    if (!user.isApproved) {
+      // 未批准的用戶顯示 waitlist dialog
+      setShowWaitlistDialog(true);
       return;
     }
     
@@ -77,6 +74,10 @@ export default function Home() {
       <PlusWelcomeDialog 
         isOpen={showWelcomeDialog}
         onClose={() => setShowWelcomeDialog(false)}
+      />
+      <WaitlistDialog 
+        isOpen={showWaitlistDialog}
+        // No onClose prop - users can't close this dialog
       />
     </div>
   );

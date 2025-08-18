@@ -17,6 +17,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ThinkBoard",
   description: "AI 協作白板工具",
+  icons: {
+    icon: '/favicon.png',
+  },
 };
 
 export default function RootLayout({

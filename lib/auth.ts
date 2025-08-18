@@ -58,23 +58,35 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user, account, profile }) {
       // Allow all users to sign in
-      // We'll check for profile completion in the app
-      if (user?.email) {
+      if (user?.email && account) {
         const db = getFirestore();
         
-        // Create or update user profile
-        const userRef = db.collection('users').doc(user.id || user.email);
-        const userDoc = await userRef.get();
+        // Use profiles collection for app data (not users which is for NextAuth)
+        const profileRef = db.collection('profiles').doc(user.email);
+        const profileDoc = await profileRef.get();
         
-        if (!userDoc.exists) {
-          // New user - create basic profile
-          await userRef.set({
+        if (!profileDoc.exists) {
+          // New user - create profile and add to waitlist
+          await profileRef.set({
+            userId: user.id,
             email: user.email,
             name: user.name || '',
             createdAt: new Date().toISOString(),
-            profileComplete: false,
-            onboardingStatus: 'pending',
+            profileComplete: true,
+            onboardingStatus: 'completed',
+            isApproved: false, // Needs admin approval
+            plan: 'free',
           }, { merge: true });
+          
+          // Add to waitlist for admin review
+          await db.collection('waitlist').add({
+            userId: user.email,
+            email: user.email,
+            name: user.name || 'User',
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            source: 'direct-login',
+          });
         }
       }
       
@@ -90,13 +102,13 @@ export const authOptions: NextAuthOptions = {
       if (account) {
         token.accessToken = account.access_token;
       }
-      // Attach plan info (free/plus) from Firestore user profile
+      // Attach plan info (free/plus) from Firestore profile
       try {
-        if (token.id) {
+        if (token.email) {
           const db = getFirestore();
-          // Store plan in collection users with doc id equal to user id or email fallback
-          const userDocRef = db.collection('users').doc(String(token.id));
-          const snap = await userDocRef.get();
+          // Use profiles collection (not users which is for NextAuth)
+          const profileRef = db.collection('profiles').doc(String(token.email));
+          const snap = await profileRef.get();
           const now = Date.now();
           const shouldRefresh = !token.planCheckAt || (now - (token.planCheckAt as number)) > 60_000; // refresh every 60s
           if (shouldRefresh) {
@@ -124,7 +136,7 @@ export const authOptions: NextAuthOptions = {
               if (email && token.plan === 'free') {
                 const preDoc = await db.collection('plus_pregrants').doc(email.toLowerCase()).get();
                 if (preDoc.exists) {
-                  await userDocRef.set({ plan: 'plus', plusGrantedAt: new Date(), plusSource: 'bmc-pregrant' }, { merge: true });
+                  await profileRef.set({ plan: 'plus', plusGrantedAt: new Date(), plusSource: 'bmc-pregrant' }, { merge: true });
                   await db.collection('plus_pregrants').doc(email.toLowerCase()).delete();
                   token.plan = 'plus';
                 }
@@ -151,10 +163,8 @@ export const authOptions: NextAuthOptions = {
         session.user.profileComplete = token.profileComplete as boolean || false;
         session.user.onboardingStatus = token.onboardingStatus as string || 'pending';
         session.user.isApproved = token.isApproved as boolean || false;
-        // Admin is always approved
-        if (session.user.email === 'dada878@gmail.com') {
-          session.user.isApproved = true;
-        }
+        // Admin check for special access
+        session.user.isAdmin = session.user.email === 'dada878@gmail.com';
         if (token.name) {
           session.user.name = token.name as string;
         }

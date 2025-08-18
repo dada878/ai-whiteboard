@@ -11,9 +11,10 @@ interface WaitlistEntry {
   id: string;
   email: string;
   name: string;
-  school: string;
-  major: string;
-  reason: string;
+  school?: string;
+  major?: string;
+  reason?: string;
+  source?: string;
   status: 'pending' | 'approved' | 'rejected';
   createdAt: string;
   approvedAt?: string;
@@ -33,17 +34,11 @@ export default function AdminWaitlistPage() {
   useEffect(() => {
     if (status === 'loading') return;
     
-    // Check if user is admin using environment variable
-    const adminEmailsEnv = process.env.NEXT_PUBLIC_ADMIN_EMAILS;
-    const adminEmails = adminEmailsEnv 
-      ? adminEmailsEnv.split(',').map(email => email.trim())
-      : [];
-    
-    const isUserAdmin = session?.user?.email ? adminEmails.includes(session.user.email) : false;
+    // Check if user is admin - hardcoded for now
+    const isUserAdmin = session?.user?.email === 'dada878@gmail.com';
     
     if (!isUserAdmin) {
       console.log('Not admin, redirecting. Email:', session?.user?.email);
-      console.log('Admin emails:', adminEmails);
       router.push('/');
     }
   }, [session, status, router]);
@@ -174,10 +169,7 @@ export default function AdminWaitlistPage() {
                     申請者
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
-                    學校/科系
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
-                    申請原因
+                    來源
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                     狀態
@@ -202,18 +194,10 @@ export default function AdminWaitlistPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div>
-                        <div>{entry.school}</div>
-                        {entry.major && (
-                          <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {entry.major}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="max-w-xs truncate" title={entry.reason}>
-                        {entry.reason || '-'}
+                      <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {entry.source === 'direct-login' ? '直接登入' : 
+                         entry.source === 'onboarding' ? '註冊流程' : 
+                         entry.source || '網站申請'}
                       </div>
                     </td>
                     <td className="px-6 py-4">

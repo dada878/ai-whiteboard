@@ -9,6 +9,7 @@ declare module "next-auth" {
       profileComplete?: boolean;
       onboardingStatus?: string;
       isApproved?: boolean;
+      isAdmin?: boolean;
     } & DefaultSession["user"]
   }
 }

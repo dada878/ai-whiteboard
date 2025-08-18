@@ -10,13 +10,10 @@ export async function POST(
   try {
     const session = await getServerSession(authOptions);
     
-    // Check if user is admin using environment variable
-    const adminEmailsEnv = process.env.NEXT_PUBLIC_ADMIN_EMAILS;
-    const adminEmails = adminEmailsEnv 
-      ? adminEmailsEnv.split(',').map(email => email.trim())
-      : [];
+    // Check if user is admin
+    const isAdmin = session?.user?.email === 'dada878@gmail.com';
     
-    if (!session?.user?.email || !adminEmails.includes(session.user.email)) {
+    if (!isAdmin) {
       return NextResponse.json(
         { error: '無權限執行此操作' },
         { status: 403 }
@@ -46,9 +43,9 @@ export async function POST(
       approvedBy: session.user.email,
     });
 
-    // Update user profile to mark as approved
-    if (data?.userId) {
-      await adminDb.collection('users').doc(data.userId).update({
+    // Update user profile to mark as approved (use profiles collection)
+    if (data?.email) {
+      await adminDb.collection('profiles').doc(data.email).update({
         isApproved: true,
         approvedAt: new Date().toISOString(),
         approvedBy: session.user.email,
