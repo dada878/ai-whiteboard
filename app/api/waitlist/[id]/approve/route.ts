@@ -11,7 +11,8 @@ export async function POST(
     const session = await getServerSession(authOptions);
     
     // Check if user is admin
-    const isAdmin = session?.user?.email === 'dada878@gmail.com';
+    const adminEmails = process.env.NEXT_PUBLIC_ADMIN_EMAILS?.split(',').map(e => e.trim()) || [];
+    const isAdmin = session?.user?.email ? adminEmails.includes(session.user.email) : false;
     
     if (!isAdmin) {
       return NextResponse.json(
@@ -40,7 +41,7 @@ export async function POST(
     await docRef.update({
       status: 'approved',
       approvedAt: new Date().toISOString(),
-      approvedBy: session.user.email,
+      approvedBy: session?.user?.email || 'admin',
     });
 
     // Update user profile to mark as approved (use profiles collection)
@@ -48,7 +49,7 @@ export async function POST(
       await adminDb.collection('profiles').doc(data.email).update({
         isApproved: true,
         approvedAt: new Date().toISOString(),
-        approvedBy: session.user.email,
+        approvedBy: session?.user?.email || 'admin',
       });
     }
 

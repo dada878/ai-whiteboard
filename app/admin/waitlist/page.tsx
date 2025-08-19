@@ -34,12 +34,21 @@ export default function AdminWaitlistPage() {
   useEffect(() => {
     if (status === 'loading') return;
     
-    // Check if user is admin - hardcoded for now
-    const isUserAdmin = session?.user?.email === 'dada878@gmail.com';
+    // Check if user is logged in first
+    if (!session?.user) {
+      console.log('Not logged in, redirecting to home');
+      router.push('/');
+      return;
+    }
+    
+    // Check if user is admin using environment variable
+    const adminEmails = process.env.NEXT_PUBLIC_ADMIN_EMAILS?.split(',').map(e => e.trim()) || [];
+    const isUserAdmin = session.user.email ? adminEmails.includes(session.user.email) : false;
     
     if (!isUserAdmin) {
-      console.log('Not admin, redirecting. Email:', session?.user?.email);
-      router.push('/');
+      console.log('Not admin, redirecting. Email:', session.user.email);
+      // Redirect to app if logged in but not admin
+      router.push('/app');
     }
   }, [session, status, router]);
 

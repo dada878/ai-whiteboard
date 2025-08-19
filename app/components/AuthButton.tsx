@@ -45,17 +45,8 @@ export default function AuthButton({ onShowPlusWelcome }: AuthButtonProps = {}) 
     }
   };
 
-  if (loading) {
-    return (
-      <div className={`px-4 py-2 rounded-lg ${
-        isDarkMode ? 'bg-dark-bg-secondary' : 'bg-gray-100'
-      } animate-pulse`}>
-        載入中...
-      </div>
-    );
-  }
-
-  if (!user) {
+  // 載入中或未登入時都顯示登入按鈕
+  if (loading || !user) {
     return (
       <div className="relative">
         <button

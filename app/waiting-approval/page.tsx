@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import { Clock, Mail, ArrowLeft, CheckCircle } from 'lucide-react';
@@ -9,7 +9,7 @@ import { signOut } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '../contexts/AuthContext';
 
-export default function WaitingApprovalPage() {
+function WaitingApprovalContent() {
   const { isDarkMode } = useTheme();
   const { user } = useAuth();
   const searchParams = useSearchParams();
@@ -103,5 +103,13 @@ export default function WaitingApprovalPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function WaitingApprovalPage() {
+  return (
+    <Suspense fallback={null}>
+      <WaitingApprovalContent />
+    </Suspense>
   );
 }

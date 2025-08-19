@@ -1,12 +1,13 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { useTheme } from '@/app/contexts/ThemeContext';
 import Link from 'next/link';
 import { AlertCircle, ArrowLeft } from 'lucide-react';
 
-export default function SignInPage() {
+function SignInContent() {
   const { isDarkMode } = useTheme();
   const searchParams = useSearchParams();
   const error = searchParams.get('error');
@@ -69,5 +70,13 @@ export default function SignInPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignInContent />
+    </Suspense>
   );
 }

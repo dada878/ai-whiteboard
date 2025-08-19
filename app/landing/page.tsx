@@ -1,24 +1,44 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import Header from '../components/Header';
+import WaitlistDialog from '../components/WaitlistDialog';
+import { useSearchParams } from 'next/navigation';
 
-export default function LandingPage() {
+function LandingContent() {
   const { isDarkMode } = useTheme();
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [showWaitlistDialog, setShowWaitlistDialog] = useState(false);
+  
+  useEffect(() => {
+    // 檢查是否剛加入 waitlist
+    const justJoined = searchParams.get('joined') === 'true';
+    if (justJoined && user && !user.isApproved) {
+      setShowWaitlistDialog(true);
+      // 清理 URL 參數
+      const url = new URL(window.location.href);
+      url.searchParams.delete('joined');
+      window.history.replaceState({}, '', url);
+    }
+  }, [user, searchParams]);
   
   const handleJoinWaitlist = () => {
     if (user) {
-      // 如果已登入，直接進入主應用（會顯示相應的 dialog）
-      router.push('/');
+      // 已登入，檢查是否已批准
+      if (user.isApproved) {
+        router.push('/app');
+      } else {
+        setShowWaitlistDialog(true);
+      }
     } else {
-      // 如果未登入，觸發 Google 登入，登入後導向主頁面
+      // 未登入，觸發 Google 登入
       signIn('google', { callbackUrl: '/?joined=true' });
     }
   };
@@ -41,14 +61,41 @@ export default function LandingPage() {
             }`}>
               專為學生設計的智能白板工具，結合 AI 技術幫助你組織想法、激發創意，讓學習更有效率！
             </p>
-            <div className="flex justify-center">
-              <button 
-                onClick={handleJoinWaitlist}
-                disabled={loading}
-                className="px-8 py-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Join Waitlist
-              </button>
+            <div className="flex justify-center gap-4">
+              {user && !user.isApproved ? (
+                <>
+                  <button 
+                    onClick={() => setShowWaitlistDialog(true)}
+                    className="px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-semibold hover:shadow-xl transition-all transform hover:scale-105"
+                  >
+                    ✓ 已加入等候名單
+                  </button>
+                  <button 
+                    onClick={() => setShowWaitlistDialog(true)}
+                    className={`px-6 py-4 rounded-lg font-semibold transition-all ${
+                      isDarkMode 
+                        ? 'bg-dark-bg-secondary text-gray-300 hover:bg-dark-bg-tertiary' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    查看狀態
+                  </button>
+                </>
+              ) : user && user.isApproved ? (
+                <button 
+                  onClick={() => router.push('/app')}
+                  className="px-8 py-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-xl transition-all transform hover:scale-105"
+                >
+                  進入應用程式
+                </button>
+              ) : (
+                <button 
+                  onClick={handleJoinWaitlist}
+                  className="px-8 py-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-xl transition-all transform hover:scale-105"
+                >
+                  Join Waitlist
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -335,6 +382,20 @@ export default function LandingPage() {
           }
         }
       `}</style>
+      
+      {/* Waitlist Dialog for logged in but not approved users */}
+      <WaitlistDialog 
+        isOpen={showWaitlistDialog}
+        onClose={() => setShowWaitlistDialog(false)}
+      />
     </div>
+  );
+}
+
+export default function LandingPage() {
+  return (
+    <Suspense fallback={null}>
+      <LandingContent />
+    </Suspense>
   );
 }

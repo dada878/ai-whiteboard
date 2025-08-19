@@ -19,7 +19,8 @@ export default function WaitlistDialog({ isOpen, onClose }: WaitlistDialogProps)
   const searchParams = useSearchParams();
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   
-  const isAdmin = user?.email === 'dada878@gmail.com';
+  const adminEmails = process.env.NEXT_PUBLIC_ADMIN_EMAILS?.split(',').map(e => e.trim()) || [];
+  const isAdmin = user?.email ? adminEmails.includes(user.email) : false;
 
   useEffect(() => {
     // Check if user just joined the waitlist from URL parameter
@@ -50,27 +51,37 @@ export default function WaitlistDialog({ isOpen, onClose }: WaitlistDialogProps)
 
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" />
-      
-      {/* Dialog */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className={`relative w-full max-w-lg rounded-2xl shadow-2xl ${
-          isDarkMode ? 'bg-dark-bg-secondary' : 'bg-white'
-        }`}>
-          {/* Close button - only show if onClose is provided */}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className={`absolute top-4 right-4 p-2 rounded-lg transition-colors ${
-                isDarkMode 
-                  ? 'hover:bg-dark-bg-tertiary text-gray-400' 
-                  : 'hover:bg-gray-100 text-gray-600'
-              }`}
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
+      {/* Backdrop and Dialog Container */}
+      <div 
+        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+        onClick={() => {
+          if (onClose) {
+            onClose();
+          }
+        }}
+      >
+        {/* Dialog - stops propagation to prevent backdrop click */}
+        <div 
+          className={`relative w-full max-w-lg rounded-2xl shadow-2xl ${
+            isDarkMode ? 'bg-dark-bg-secondary' : 'bg-white'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Close button - always show */}
+          <button
+            onClick={() => {
+              if (onClose) {
+                onClose();
+              }
+            }}
+            className={`absolute top-4 right-4 p-2 rounded-lg transition-colors ${
+              isDarkMode 
+                ? 'hover:bg-dark-bg-tertiary text-gray-400' 
+                : 'hover:bg-gray-100 text-gray-600'
+            }`}
+          >
+            <X className="w-5 h-5" />
+          </button>
           
           {/* Content */}
           <div className="p-8 text-center">

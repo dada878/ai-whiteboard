@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { AuthService, User } from '../services/authService';
 
@@ -17,11 +17,32 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// 從 sessionStorage 獲取快取的用戶資訊
+function getCachedUser(): User | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = sessionStorage.getItem('auth-cache');
+    if (cached) {
+      const data = JSON.parse(cached);
+      // 快取有效期 10 分鐘
+      if (Date.now() - data.timestamp < 10 * 60 * 1000) {
+        return data.user;
+      }
+    }
+  } catch {
+    // 忽略錯誤
+  }
+  return null;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
-  const loading = status === 'loading';
+  const [cachedUser, setCachedUser] = useState<User | null>(getCachedUser());
   
-  const user: User | null = session?.user ? {
+  // 只有在真正 loading 時才顯示 loading，unauthenticated 時不顯示
+  const loading = status === 'loading' && !cachedUser;
+  
+  const currentUser: User | null = session?.user ? {
     id: session.user.id || '',
     email: session.user.email,
     name: session.user.name,
@@ -32,6 +53,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     onboardingStatus: (session.user as { onboardingStatus?: string }).onboardingStatus || 'pending',
     isApproved: Boolean((session.user as { isApproved?: boolean }).isApproved)
   } : null;
+  
+  // 優先使用真實 session，其次使用快取
+  const user = currentUser || (loading ? cachedUser : null);
+  
+  // 更新快取
+  useEffect(() => {
+    if (currentUser && typeof window !== 'undefined') {
+      sessionStorage.setItem('auth-cache', JSON.stringify({
+        user: currentUser,
+        timestamp: Date.now()
+      }));
+    } else if (!currentUser && !loading && typeof window !== 'undefined') {
+      sessionStorage.removeItem('auth-cache');
+    }
+  }, [currentUser, loading]);
 
   const signInWithGoogle = async () => {
     try {
@@ -71,6 +107,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
+      // 清除快取
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('auth-cache');
+      }
+      // 清除 state 中的快取
+      setCachedUser(null);
       await AuthService.signOut();
     } catch (error) {
       console.error('Sign-out failed:', error);

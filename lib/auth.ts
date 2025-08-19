@@ -1,6 +1,5 @@
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import CredentialsProvider from "next-auth/providers/credentials";
 import { FirestoreAdapter } from "@auth/firebase-adapter";
 import { cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -12,35 +11,8 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
-    
-    // Email/Password Provider
-    CredentialsProvider({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
-      },
-      async authorize(credentials) {
-        // 這裡你可以實現自己的認證邏輯
-        // 例如：檢查資料庫中的使用者
-        if (!credentials?.email || !credentials?.password) {
-          return null;
-        }
-        
-        // TODO: 實現真實的密碼驗證
-        // 暫時的示範邏輯
-        if (credentials.email === "demo@example.com" && credentials.password === "demo123") {
-          return {
-            id: "1",
-            email: credentials.email,
-            name: "Demo User",
-          };
-        }
-        
-        return null;
-      }
     })
+    // 只使用 Google 登入，移除 Email/Password Provider
   ],
   
   adapter: FirestoreAdapter({
@@ -164,7 +136,8 @@ export const authOptions: NextAuthOptions = {
         session.user.onboardingStatus = token.onboardingStatus as string || 'pending';
         session.user.isApproved = token.isApproved as boolean || false;
         // Admin check for special access
-        session.user.isAdmin = session.user.email === 'dada878@gmail.com';
+        const adminEmails = process.env.NEXT_PUBLIC_ADMIN_EMAILS?.split(',').map(e => e.trim()) || [];
+        session.user.isAdmin = session.user.email ? adminEmails.includes(session.user.email) : false;
         if (token.name) {
           session.user.name = token.name as string;
         }
@@ -174,8 +147,8 @@ export const authOptions: NextAuthOptions = {
   },
   
   pages: {
-    signIn: "/auth/signin", // 自定義登入頁面（可選）
-    error: "/auth/error",   // 錯誤頁面（可選）
+    signIn: "/auth/signin",
+    error: "/auth/error",
   },
   
   debug: process.env.NODE_ENV === "development",
