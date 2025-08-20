@@ -2280,6 +2280,19 @@ const Whiteboard: React.FC = () => {
       const newNoteY = newNoteCenterY - newNoteHeight / 2;
       
       const newNoteId = `note_${Date.now()}`;
+      // 決定要繼承哪個元素的群組
+      let groupIdToInherit = fromElement.groupId;
+      
+      // 如果是拖曳端點，新便利貼應該繼承被拖曳端點的群組
+      if (draggingEdgeEndpoint) {
+        const draggedElementId = draggingEdgeEndpoint.originalTarget;
+        const draggedElement = whiteboardData.notes.find(n => n.id === draggedElementId) || 
+                              whiteboardData.images?.find(i => i.id === draggedElementId);
+        
+        // 新便利貼繼承被拖曳端點的群組
+        groupIdToInherit = draggedElement?.groupId;
+      }
+      
       const newNote: StickyNote = {
         id: newNoteId,
         x: newNoteX,
@@ -2287,7 +2300,9 @@ const Whiteboard: React.FC = () => {
         width: newNoteWidth,
         height: newNoteHeight,
         content: '',
-        color: '#FEF3C7'
+        color: '#FEF3C7',
+        // 如果起始元素在群組內，新便利貼也加入同一群組
+        groupId: groupIdToInherit
       };
       
       // 更新白板數據
