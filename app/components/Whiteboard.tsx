@@ -104,6 +104,11 @@ const Whiteboard: React.FC = () => {
   } | null>(null);
   const [autoFocusGroupId, setAutoFocusGroupId] = useState<string | null>(null);
   const [recentDragSelect, setRecentDragSelect] = useState(false);
+  const [draggingEdgeEndpoint, setDraggingEdgeEndpoint] = useState<{
+    edgeId: string;
+    endpoint: 'from' | 'to';
+    originalTarget: string;
+  } | null>(null);
   
   // 用戶行為追蹤
   const [sessionId] = useState(() => uuidv4());
@@ -2178,16 +2183,42 @@ const Whiteboard: React.FC = () => {
     if (connectingFrom) {
       // 連接到便利貼
       if (hoveredNote && connectingFrom !== hoveredNote) {
-        addEdge(connectingFrom, hoveredNote);
+        // 如果是端點拖曳，根據原始端點決定連線方向
+        if (draggingEdgeEndpoint) {
+          if (draggingEdgeEndpoint.endpoint === 'from') {
+            // 拖曳 from 端：新目標 → 固定端
+            addEdge(hoveredNote, connectingFrom);
+          } else {
+            // 拖曳 to 端：固定端 → 新目標
+            addEdge(connectingFrom, hoveredNote);
+          }
+        } else {
+          // 普通連線：起點 → 終點
+          addEdge(connectingFrom, hoveredNote);
+        }
         setConnectingFrom(null);
         setHoveredNote(null);
+        setDraggingEdgeEndpoint(null);
         return;
       }
       // 連接到圖片
       if (hoveredImage && connectingFrom !== hoveredImage) {
-        addEdge(connectingFrom, hoveredImage);
+        // 如果是端點拖曳，根據原始端點決定連線方向
+        if (draggingEdgeEndpoint) {
+          if (draggingEdgeEndpoint.endpoint === 'from') {
+            // 拖曳 from 端：新目標 → 固定端
+            addEdge(hoveredImage, connectingFrom);
+          } else {
+            // 拖曳 to 端：固定端 → 新目標
+            addEdge(connectingFrom, hoveredImage);
+          }
+        } else {
+          // 普通連線：起點 → 終點
+          addEdge(connectingFrom, hoveredImage);
+        }
         setConnectingFrom(null);
         setHoveredImage(null);
+        setDraggingEdgeEndpoint(null);
         return;
       }
     }
@@ -2265,8 +2296,19 @@ const Whiteboard: React.FC = () => {
         notes: [...prev.notes, newNote]
       }));
       
-      // 創建連接
-      addEdge(connectingFrom, newNoteId);
+      // 創建連接（考慮端點拖曳的方向）
+      if (draggingEdgeEndpoint) {
+        if (draggingEdgeEndpoint.endpoint === 'from') {
+          // 拖曳 from 端：新便利貼 → 固定端
+          addEdge(newNoteId, connectingFrom);
+        } else {
+          // 拖曳 to 端：固定端 → 新便利貼
+          addEdge(connectingFrom, newNoteId);
+        }
+      } else {
+        // 普通連線：起點 → 新便利貼
+        addEdge(connectingFrom, newNoteId);
+      }
       
       // 自動選中並進入編輯模式
       setSelectedNote(newNoteId);
@@ -2275,6 +2317,7 @@ const Whiteboard: React.FC = () => {
       // 清理連接狀態
       setConnectingFrom(null);
       setHoveredNote(null);
+      setDraggingEdgeEndpoint(null);
       return;
     }
     
@@ -2282,7 +2325,7 @@ const Whiteboard: React.FC = () => {
     
     // 重置畫板拖曳狀態
     setIsDragging(false);
-  }, [connectingFrom, hoveredNote, addEdge, mousePosition, updateWhiteboardData]);
+  }, [connectingFrom, hoveredNote, hoveredImage, addEdge, mousePosition, updateWhiteboardData, draggingEdgeEndpoint]);
 
   const handleCanvasRightClick = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -2645,6 +2688,36 @@ const Whiteboard: React.FC = () => {
       });
     }
   }, [whiteboardData.notes]);
+
+  // 處理線條端點拖曳
+  const handleStartDragEndpoint = useCallback((edgeId: string, endpoint: 'from' | 'to', currentTarget: string) => {
+    const edge = whiteboardData.edges.find(e => e.id === edgeId);
+    if (!edge) return;
+    
+    // 記錄原始連線資訊
+    setDraggingEdgeEndpoint({
+      edgeId,
+      endpoint,
+      originalTarget: endpoint === 'from' ? edge.from : edge.to
+    });
+    
+    // 刪除原有的連線
+    deleteEdge(edgeId);
+    
+    // 設置滑鼠位置為被拖曳端點的位置
+    const draggedElement = [...whiteboardData.notes, ...(whiteboardData.images || [])]
+      .find(elem => elem.id === (endpoint === 'from' ? edge.from : edge.to));
+    if (draggedElement) {
+      setMousePosition({
+        x: draggedElement.x + draggedElement.width / 2,
+        y: draggedElement.y + draggedElement.height / 2
+      });
+    }
+    
+    // 設置連線起點為固定端（不被拖曳的那一端）
+    const fixedEnd = endpoint === 'from' ? edge.to : edge.from;
+    setConnectingFrom(fixedEnd);
+  }, [whiteboardData, deleteEdge]);
 
   // 快速連接：點擊連接點直接創建新便利貼
   const handleQuickConnect = useCallback((noteId: string, direction: 'top' | 'right' | 'bottom' | 'left') => {
@@ -4869,35 +4942,63 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                   console.log('Deleting edge from Whiteboard:', edge.id);
                   deleteEdge(edge.id);
                 }}
+                onStartDragEndpoint={handleStartDragEndpoint}
               />
             ))}
 
             {/* 跟隨滑鼠的預覽連線 */}
             {connectingFrom && (() => {
-              // 查找起點（可能是便利貼或圖片）
+              // 查找固定端點（可能是便利貼或圖片）
               const fromNote = whiteboardData.notes.find(note => note.id === connectingFrom);
               const fromImage = whiteboardData.images?.find(img => img.id === connectingFrom);
               const fromElement = fromNote || fromImage;
               
               if (!fromElement) return null;
 
-              const fromX = fromElement.x + fromElement.width / 2;
-              const fromY = fromElement.y + fromElement.height / 2;
-              let toX = mousePosition.x;
-              let toY = mousePosition.y;
+              // 根據是否在拖曳端點來決定線條方向
+              let fromX, fromY, toX, toY;
+              
+              if (draggingEdgeEndpoint && draggingEdgeEndpoint.endpoint === 'from') {
+                // 拖曳 from 端：滑鼠是新的起點，固定端(connectingFrom)是終點
+                // 所以箭頭應該從滑鼠指向固定端
+                fromX = mousePosition.x;
+                fromY = mousePosition.y;
+                toX = fromElement.x + fromElement.width / 2;
+                toY = fromElement.y + fromElement.height / 2;
+              } else {
+                // 拖曳 to 端或普通連線：固定端是起點，滑鼠是終點
+                fromX = fromElement.x + fromElement.width / 2;
+                fromY = fromElement.y + fromElement.height / 2;
+                toX = mousePosition.x;
+                toY = mousePosition.y;
+              }
 
               // 如果懸停在目標上（便利貼或圖片），連到其中心
               if (hoveredNote) {
                 const hoveredNoteData = whiteboardData.notes.find(note => note.id === hoveredNote);
                 if (hoveredNoteData) {
-                  toX = hoveredNoteData.x + hoveredNoteData.width / 2;
-                  toY = hoveredNoteData.y + hoveredNoteData.height / 2;
+                  if (draggingEdgeEndpoint && draggingEdgeEndpoint.endpoint === 'from') {
+                    // 拖曳 from 端：懸停目標是新的起點
+                    fromX = hoveredNoteData.x + hoveredNoteData.width / 2;
+                    fromY = hoveredNoteData.y + hoveredNoteData.height / 2;
+                  } else {
+                    // 拖曳 to 端或普通連線：懸停目標是新的終點
+                    toX = hoveredNoteData.x + hoveredNoteData.width / 2;
+                    toY = hoveredNoteData.y + hoveredNoteData.height / 2;
+                  }
                 }
               } else if (hoveredImage) {
                 const hoveredImageData = whiteboardData.images?.find(img => img.id === hoveredImage);
                 if (hoveredImageData) {
-                  toX = hoveredImageData.x + hoveredImageData.width / 2;
-                  toY = hoveredImageData.y + hoveredImageData.height / 2;
+                  if (draggingEdgeEndpoint && draggingEdgeEndpoint.endpoint === 'from') {
+                    // 拖曳 from 端：懸停目標是新的起點
+                    fromX = hoveredImageData.x + hoveredImageData.width / 2;
+                    fromY = hoveredImageData.y + hoveredImageData.height / 2;
+                  } else {
+                    // 拖曳 to 端或普通連線：懸停目標是新的終點
+                    toX = hoveredImageData.x + hoveredImageData.width / 2;
+                    toY = hoveredImageData.y + hoveredImageData.height / 2;
+                  }
                 }
               }
 
@@ -4916,29 +5017,57 @@ ${pathAnalysis.suggestions.map(s => `• ${s}`).join('\n')}`;
                 }
               };
               
-              // 調整起點位置，留出間距（與實際線條一致）
+              // 調整起點和終點位置，留出間距（與實際線條一致）
               const gap = 15;
-              const fromDistance = getDistanceToEdge(fromElement.width, fromElement.height, angle) + gap;
-              const adjustedFromX = fromX + Math.cos(angle) * fromDistance;
-              const adjustedFromY = fromY + Math.sin(angle) * fromDistance;
-              
-              // 調整終點位置
+              let adjustedFromX = fromX;
+              let adjustedFromY = fromY;
               let adjustedToX = toX;
               let adjustedToY = toY;
               
-              if (hoveredNote) {
-                const hoveredNoteData = whiteboardData.notes.find(note => note.id === hoveredNote);
-                if (hoveredNoteData) {
-                  const toDistance = getDistanceToEdge(hoveredNoteData.width, hoveredNoteData.height, angle) + gap;
-                  adjustedToX = toX - Math.cos(angle) * toDistance;
-                  adjustedToY = toY - Math.sin(angle) * toDistance;
+              // 根據拖曳方向調整端點
+              if (draggingEdgeEndpoint && draggingEdgeEndpoint.endpoint === 'from') {
+                // 拖曳 from 端：調整終點（固定端）
+                const toDistance = getDistanceToEdge(fromElement.width, fromElement.height, angle) + gap;
+                adjustedToX = toX - Math.cos(angle) * toDistance;
+                adjustedToY = toY - Math.sin(angle) * toDistance;
+                
+                // 如果懸停在目標上，調整起點
+                if (hoveredNote) {
+                  const hoveredNoteData = whiteboardData.notes.find(note => note.id === hoveredNote);
+                  if (hoveredNoteData) {
+                    const fromDistance = getDistanceToEdge(hoveredNoteData.width, hoveredNoteData.height, angle) + gap;
+                    adjustedFromX = fromX + Math.cos(angle) * fromDistance;
+                    adjustedFromY = fromY + Math.sin(angle) * fromDistance;
+                  }
+                } else if (hoveredImage) {
+                  const hoveredImageData = whiteboardData.images?.find(img => img.id === hoveredImage);
+                  if (hoveredImageData) {
+                    const fromDistance = getDistanceToEdge(hoveredImageData.width, hoveredImageData.height, angle) + gap;
+                    adjustedFromX = fromX + Math.cos(angle) * fromDistance;
+                    adjustedFromY = fromY + Math.sin(angle) * fromDistance;
+                  }
                 }
-              } else if (hoveredImage) {
-                const hoveredImageData = whiteboardData.images?.find(img => img.id === hoveredImage);
-                if (hoveredImageData) {
-                  const toDistance = getDistanceToEdge(hoveredImageData.width, hoveredImageData.height, angle) + gap;
-                  adjustedToX = toX - Math.cos(angle) * toDistance;
-                  adjustedToY = toY - Math.sin(angle) * toDistance;
+              } else {
+                // 拖曳 to 端或普通連線：調整起點（固定端）
+                const fromDistance = getDistanceToEdge(fromElement.width, fromElement.height, angle) + gap;
+                adjustedFromX = fromX + Math.cos(angle) * fromDistance;
+                adjustedFromY = fromY + Math.sin(angle) * fromDistance;
+                
+                // 如果懸停在目標上，調整終點
+                if (hoveredNote) {
+                  const hoveredNoteData = whiteboardData.notes.find(note => note.id === hoveredNote);
+                  if (hoveredNoteData) {
+                    const toDistance = getDistanceToEdge(hoveredNoteData.width, hoveredNoteData.height, angle) + gap;
+                    adjustedToX = toX - Math.cos(angle) * toDistance;
+                    adjustedToY = toY - Math.sin(angle) * toDistance;
+                  }
+                } else if (hoveredImage) {
+                  const hoveredImageData = whiteboardData.images?.find(img => img.id === hoveredImage);
+                  if (hoveredImageData) {
+                    const toDistance = getDistanceToEdge(hoveredImageData.width, hoveredImageData.height, angle) + gap;
+                    adjustedToX = toX - Math.cos(angle) * toDistance;
+                    adjustedToY = toY - Math.sin(angle) * toDistance;
+                  }
                 }
               }
 

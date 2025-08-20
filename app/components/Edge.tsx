@@ -10,6 +10,7 @@ interface EdgeComponentProps {
   isSelected?: boolean;
   onSelect?: () => void;
   onDelete?: () => void;
+  onStartDragEndpoint?: (edgeId: string, endpoint: 'from' | 'to', currentTarget: string) => void;
 }
 
 const EdgeComponent: React.FC<EdgeComponentProps> = ({ 
@@ -18,9 +19,11 @@ const EdgeComponent: React.FC<EdgeComponentProps> = ({
   images = [],
   isSelected = false, 
   onSelect, 
-  onDelete 
+  onDelete,
+  onStartDragEndpoint
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [hoveredEndpoint, setHoveredEndpoint] = useState<'from' | 'to' | null>(null);
   
   // 查找起點和終點（可能是便利貼或圖片）
   const fromNote = notes.find(note => note.id === edge.from);
@@ -78,6 +81,7 @@ const EdgeComponent: React.FC<EdgeComponentProps> = ({
   const adjustedFromY = fromY + Math.sin(angle) * fromDistance;
   const adjustedToX = toX - Math.cos(angle) * toDistance;
   const adjustedToY = toY - Math.sin(angle) * toDistance;
+  
 
   // 箭頭大小和位置調整
   const arrowSize = 16;
@@ -101,6 +105,16 @@ const EdgeComponent: React.FC<EdgeComponentProps> = ({
   const strokeColor = isSelected ? '#EF4444' : isHovered ? '#6B7280' : '#374151';
   const strokeWidth = isSelected ? 4.9 : isHovered ? 4.2 : 3.5; // 70% 的原始粗細
 
+  // 處理端點拖曳（立即開始拖曳，不需要移動閾值）
+  const handleEndpointMouseDown = (e: React.MouseEvent, endpoint: 'from' | 'to') => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    // 立即開始拖曳，不需要檢查移動距離
+    const currentTarget = endpoint === 'from' ? edge.from : edge.to;
+    onStartDragEndpoint?.(edge.id, endpoint, currentTarget);
+  };
+
   return (
     <g>
       {/* 可點擊的透明線條（增加點擊區域） */}
@@ -121,8 +135,8 @@ const EdgeComponent: React.FC<EdgeComponentProps> = ({
       <line
         x1={adjustedFromX}
         y1={adjustedFromY}
-        x2={arrowTipX - Math.cos(angle) * (arrowSize * 0.7)}
-        y2={arrowTipY - Math.sin(angle) * (arrowSize * 0.7)}
+        x2={adjustedToX}
+        y2={adjustedToY}
         stroke={strokeColor}
         strokeWidth={strokeWidth}
         style={{ 
@@ -140,6 +154,97 @@ const EdgeComponent: React.FC<EdgeComponentProps> = ({
           transition: 'all 0.2s ease'
         }}
       />
+      
+      {/* 選中時的端點拖曳手柄 */}
+      {isSelected && (
+        <>
+          {/* From 端點 */}
+          <g
+            onMouseDown={(e) => handleEndpointMouseDown(e, 'from')}
+            onMouseEnter={() => setHoveredEndpoint('from')}
+            onMouseLeave={() => setHoveredEndpoint(null)}
+            style={{ cursor: 'move' }}
+          >
+            {/* 增大的點擊區域 */}
+            <circle
+              cx={adjustedFromX}
+              cy={adjustedFromY}
+              r="24"
+              fill="transparent"
+              stroke="transparent"
+            />
+            {/* 陰影效果 */}
+            {hoveredEndpoint === 'from' && (
+              <circle
+                cx={adjustedFromX}
+                cy={adjustedFromY}
+                r="16"
+                fill="#3B82F6"
+                fillOpacity="0.2"
+                style={{
+                  transition: 'all 0.2s ease'
+                }}
+              />
+            )}
+            {/* 主要端點 */}
+            <circle
+              cx={adjustedFromX}
+              cy={adjustedFromY}
+              r={hoveredEndpoint === 'from' ? 12 : 8}
+              fill="#3B82F6"
+              stroke="white"
+              strokeWidth="2"
+              style={{
+                transition: 'all 0.2s ease',
+                filter: hoveredEndpoint === 'from' ? 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))' : 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1))'
+              }}
+            />
+          </g>
+          
+          {/* To 端點 */}
+          <g
+            onMouseDown={(e) => handleEndpointMouseDown(e, 'to')}
+            onMouseEnter={() => setHoveredEndpoint('to')}
+            onMouseLeave={() => setHoveredEndpoint(null)}
+            style={{ cursor: 'move' }}
+          >
+            {/* 增大的點擊區域 */}
+            <circle
+              cx={adjustedToX}
+              cy={adjustedToY}
+              r="24"
+              fill="transparent"
+              stroke="transparent"
+            />
+            {/* 陰影效果 */}
+            {hoveredEndpoint === 'to' && (
+              <circle
+                cx={adjustedToX}
+                cy={adjustedToY}
+                r="16"
+                fill="#3B82F6"
+                fillOpacity="0.2"
+                style={{
+                  transition: 'all 0.2s ease'
+                }}
+              />
+            )}
+            {/* 主要端點 */}
+            <circle
+              cx={adjustedToX}
+              cy={adjustedToY}
+              r={hoveredEndpoint === 'to' ? 12 : 8}
+              fill="#3B82F6"
+              stroke="white"
+              strokeWidth="2"
+              style={{
+                transition: 'all 0.2s ease',
+                filter: hoveredEndpoint === 'to' ? 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))' : 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1))'
+              }}
+            />
+          </g>
+        </>
+      )}
       
       {/* 選中時的中點刪除按鈕 */}
       {isSelected && (
